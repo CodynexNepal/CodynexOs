@@ -47,6 +47,64 @@ export class EngineeringService {
     return this.engRepo.findAllQaReports();
   }
 
+  async probeGithubToken() {
+    const token = await resolveRuntimeSecret('github_token');
+    if (!token) {
+      return {
+        configured: false,
+        ok: false,
+        tokenType: 'none',
+        login: null as string | null,
+        scopes: '',
+        detail: 'GITHUB_TOKEN is not configured in .env or Settings.',
+      };
+    }
+
+    const tokenType = token.startsWith('github_pat_')
+      ? 'fine-grained'
+      : token.startsWith('ghp_')
+        ? 'classic'
+        : 'unknown';
+
+    const res = await fetch('https://api.github.com/user', {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'CodyNex-OS',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const scopes = res.headers.get('x-oauth-scopes') || '';
+    const body = (await res.json().catch(() => ({}))) as { login?: string; message?: string };
+
+    if (!res.ok) {
+      return {
+        configured: true,
+        ok: false,
+        tokenType,
+        login: body.login ?? null,
+        scopes,
+        detail:
+          body.message ||
+          `GitHub returned HTTP ${res.status}. ${tokenType === 'fine-grained' ? 'Ensure Fine-Grained PAT has Account/Repository permissions enabled.' : 'Ensure Classic PAT is valid with repo scope.'}`,
+      };
+    }
+
+    const hasRepoScope =
+      tokenType === 'classic' ? /\brepo\b/.test(scopes) : true;
+
+    return {
+      configured: true,
+      ok: hasRepoScope,
+      tokenType,
+      login: body.login ?? null,
+      scopes: scopes || (tokenType === 'fine-grained' ? 'fine-grained (check UI permissions)' : ''),
+      detail: hasRepoScope
+        ? `Authenticated as ${body.login ?? 'GitHub user'}${tokenType === 'fine-grained' ? ' (Fine-Grained PAT — ensure Contents, Pull requests, and Administration are Read & Write)' : ` (scopes: ${scopes})`}`
+        : `Authenticated as ${body.login ?? 'GitHub user'}, but Classic PAT is missing 'repo' write scope (current scopes: ${scopes || 'none'}).`,
+    };
+  }
+
   async connectRepo(
     owner: string,
     name: string,
@@ -180,12 +238,16 @@ export class EngineeringService {
     const cleanName = params.name.trim().replace(/\s+/g, '-');
     if (!cleanName) throw ApiError.badRequest('Repository name is required.');
 
-    // Try authenticated user repo first unless an org owner different from user is explicitly provided
     let endpoint = 'https://api.github.com/user/repos';
     if (params.owner && params.owner.trim()) {
-      const meRes = await fetch('https://api.github.com/user', { headers });
-      const me = meRes.ok ? ((await meRes.json()) as { login?: string }) : {};
-      if (me.login && me.login.toLowerCase() !== params.owner.trim().toLowerCase()) {
+      const ownerRes = await fetch(
+        `https://api.github.com/users/${encodeURIComponent(params.owner.trim())}`,
+        { headers },
+      );
+      const ownerInfo = ownerRes.ok
+        ? ((await ownerRes.json()) as { type?: string })
+        : {};
+      if (ownerInfo.type === 'Organization') {
         endpoint = `https://api.github.com/orgs/${encodeURIComponent(params.owner.trim())}/repos`;
       }
     }
@@ -209,6 +271,11 @@ export class EngineeringService {
     };
 
     if (!res.ok) {
+      if (res.status === 403 || /not accessible by personal access token/i.test(data.message || '')) {
+        throw ApiError.forbidden(
+          `GitHub denied repository creation (${data.message || '403'}). Use a Classic PAT with 'repo' scope, or grant your Fine-Grained PAT: All repositories + Administration (Read & Write) + Contents (Read & Write) + Pull requests (Read & Write).`,
+        );
+      }
       throw ApiError.badRequest(data.message || `GitHub repo creation failed (HTTP ${res.status})`);
     }
 
@@ -433,6 +500,59 @@ export class EngineeringService {
     });
 
     return { commitSha: pushed.commitSha, pullRequest: prRecord };
+  }
+
+  async mergeApprovedPullRequest(params: {
+    repoId: string;
+    prId?: string;
+    prNumber: number;
+    actorId: string;
+  }) {
+    const repo = await this.engRepo.findRepoById(params.repoId);
+    if (!repo) throw ApiError.notFound('Repository not found.');
+
+    const headers = await this.buildGithubHeaders();
+    if (!headers.Authorization) {
+      throw ApiError.badRequest('GITHUB_TOKEN is required to merge Pull Requests.');
+    }
+
+    const res = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls/${params.prNumber}/merge`,
+      {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          merge_method: 'squash',
+          commit_title: `Merge PR #${params.prNumber} (CEO Approved via CodyNex OS)`,
+        }),
+      },
+    );
+
+    const body = (await res.json()) as { merged?: boolean; sha?: string; message?: string };
+    if (!res.ok || !body.merged) {
+      throw ApiError.badRequest(
+        body.message || `GitHub merge failed for PR #${params.prNumber} (HTTP ${res.status}).`,
+      );
+    }
+
+    if (params.prId) {
+      const pr = await this.engRepo.findPullRequestById(params.prId);
+      if (pr) {
+        pr.status = 'MERGED';
+        await this.engRepo.savePullRequest(pr);
+      }
+    }
+
+    await this.auditService.log({
+      actorType: 'USER',
+      actorId: params.actorId,
+      action: 'GITHUB_PR_MERGED',
+      resourceType: 'github_pull_request',
+      resourceId: params.prId ?? String(params.prNumber),
+      metadata: { repo: `${repo.owner}/${repo.name}`, prNumber: params.prNumber, sha: body.sha },
+    });
+
+    return { merged: true, sha: body.sha };
   }
 
   async syncRepoFromGithub(repoId: string, actorId: string) {

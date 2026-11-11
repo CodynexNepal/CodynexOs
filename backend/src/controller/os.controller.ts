@@ -8,6 +8,7 @@ import { ProjectRepository } from '../repository/project.repository';
 import { TaskRepository } from '../repository/task.repository';
 import { GovernanceRepository } from '../repository/governance.repository';
 import { CrmRepository } from '../repository/crm.repository';
+import { EngineeringService } from '../services/engineering.service';
 import { NotificationService } from '../services/notification.service';
 import { AuditService } from '../services/audit.service';
 import { getRequiredParam } from '../decorators/http.decorator';
@@ -27,6 +28,7 @@ export class OsController {
     private readonly crmRepo: CrmRepository,
     private readonly notificationService: NotificationService,
     private readonly auditService: AuditService,
+    private readonly engService?: EngineeringService,
   ) {}
 
   overview = async (_req: Request, res: Response, next: NextFunction) => {
@@ -251,6 +253,22 @@ export class OsController {
       }
 
       const decision = req.body.decision as 'APPROVED' | 'REJECTED';
+
+      if (
+        decision === 'APPROVED' &&
+        approval.actionType === 'MERGE_AND_DEPLOY' &&
+        this.engService &&
+        typeof approval.payload?.repoId === 'string' &&
+        typeof approval.payload?.prNumber === 'number'
+      ) {
+        await this.engService.mergeApprovedPullRequest({
+          repoId: approval.payload.repoId,
+          prId: typeof approval.payload.prId === 'string' ? approval.payload.prId : undefined,
+          prNumber: approval.payload.prNumber,
+          actorId: req.user!.userId,
+        });
+      }
+
       approval.status = decision === 'APPROVED' ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED;
       approval.reviewedBy = req.user!.userId;
       approval.reviewNote = req.body.note ?? null;

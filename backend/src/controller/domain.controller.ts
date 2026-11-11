@@ -84,6 +84,15 @@ export class DomainController {
     }
   };
 
+  probeGithub = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.engService.probeGithubToken();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   connectRepo = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.engService.connectRepo(

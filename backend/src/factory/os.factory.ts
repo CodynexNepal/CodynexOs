@@ -96,6 +96,7 @@ export function getOsContainer(): OsContainer {
       crmRepo,
       notificationService,
       auditService,
+      engineeringService,
     ),
     domainController: new DomainController(
       memoryRepo,

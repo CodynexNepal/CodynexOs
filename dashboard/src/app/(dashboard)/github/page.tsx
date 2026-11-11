@@ -62,6 +62,9 @@ export default function GithubPage() {
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null);
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [newFileOpen, setNewFileOpen] = useState(false);
+  const [newFilePath, setNewFilePath] = useState("");
+  const [newFileContent, setNewFileContent] = useState("");
   const [branchName, setBranchName] = useState("codynex/workspace-update");
   const [prTitle, setPrTitle] = useState("");
   const [checksResult, setChecksResult] = useState<{
@@ -70,6 +73,13 @@ export default function GithubPage() {
   } | null>(null);
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [probeResult, setProbeResult] = useState<{
+    configured: boolean;
+    ok: boolean;
+    tokenType: string;
+    login: string | null;
+    detail: string;
+  } | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
 
@@ -98,6 +108,19 @@ export default function GithubPage() {
       refetch();
     } catch (err) {
       setActionErr(toApiError(err).message);
+    }
+  };
+
+  const handleProbeGithub = async () => {
+    setBusyAction("probe");
+    setActionErr(null);
+    try {
+      const res = await codynexApi.github.probe();
+      setProbeResult(unwrap(res.data));
+    } catch (err) {
+      setActionErr(toApiError(err).message);
+    } finally {
+      setBusyAction(null);
     }
   };
 
@@ -204,6 +227,28 @@ export default function GithubPage() {
     }
   };
 
+  const handleCreateNewFile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeRepo || !newFilePath.trim()) return;
+    setBusyAction("new-file");
+    setActionErr(null);
+    try {
+      await codynexApi.github.workspaceWriteFiles(activeRepo.id, {
+        branchName,
+        files: [{ path: newFilePath.trim(), content: newFileContent }],
+      });
+      setNewFileOpen(false);
+      setActionMsg(`Created '${newFilePath.trim()}' on branch '${branchName}'.`);
+      setNewFilePath("");
+      setNewFileContent("");
+      await loadWorkspace(activeRepo, currentPath);
+    } catch (err) {
+      setActionErr(toApiError(err).message);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const handleRunChecks = async () => {
     if (!activeRepo) return;
     setBusyAction("checks");
@@ -270,6 +315,14 @@ export default function GithubPage() {
           </form>
 
           <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleProbeGithub}
+              loading={busyAction === "probe"}
+            >
+              Test GitHub Token
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setConnectOpen(true)}>
               <Plus className="h-3.5 w-3.5" />
               Connect Existing
@@ -280,6 +333,18 @@ export default function GithubPage() {
             </Button>
           </div>
         </div>
+
+        {probeResult && (
+          <div
+            className={`rounded-md border p-3 text-xs ${
+              probeResult.ok
+                ? "border-[#9FE870] bg-[#EAFCCB] text-[#14532D]"
+                : "border-amber-300 bg-amber-50 text-amber-950"
+            }`}
+          >
+            <strong>GitHub Token ({probeResult.tokenType}):</strong> {probeResult.detail}
+          </div>
+        )}
 
         {!loading && (!data || data.length === 0) ? (
           <EmptyState
@@ -371,18 +436,27 @@ export default function GithubPage() {
                 <div className="p-4">
                   <div className="mb-2 flex items-center justify-between text-xs font-bold text-ink">
                     <span>Project Folder</span>
-                    {currentPath && (
+                    <div className="flex items-center gap-2">
+                      {currentPath && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const parent = currentPath.split("/").slice(0, -1).join("/");
+                            loadWorkspace(activeRepo, parent);
+                          }}
+                          className="text-ink-muted underline hover:text-ink"
+                        >
+                          .. Up
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => {
-                          const parent = currentPath.split("/").slice(0, -1).join("/");
-                          loadWorkspace(activeRepo, parent);
-                        }}
-                        className="text-ink-muted underline hover:text-ink"
+                        onClick={() => setNewFileOpen(true)}
+                        className="rounded border border-surface-border px-1.5 py-0.5 text-[11px] font-semibold text-ink hover:border-ink"
                       >
-                        .. Up
+                        + File
                       </button>
-                    )}
+                    </div>
                   </div>
                   <div className="max-h-96 space-y-1 overflow-y-auto text-xs">
                     {workspace.entries.map((entry) => (
@@ -475,15 +549,22 @@ export default function GithubPage() {
                     </div>
                   )}
 
-                  {workspace.gitState.diff && (
+                  {(workspace.gitState.status || workspace.gitState.diff) && (
                     <div className="rounded-md border border-surface-border bg-surface-muted p-3 text-xs">
                       <p className="mb-1 flex items-center gap-1.5 font-bold text-ink">
                         <FolderGit2 className="h-3.5 w-3.5" />
-                        Live Git Diff ({workspace.gitState.branch})
+                        Live Git Changes ({workspace.gitState.branch})
                       </p>
-                      <pre className="max-h-52 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-ink">
-                        {workspace.gitState.diff}
-                      </pre>
+                      {workspace.gitState.status && (
+                        <pre className="mb-2 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] text-ink-muted">
+                          {workspace.gitState.status}
+                        </pre>
+                      )}
+                      {workspace.gitState.diff && (
+                        <pre className="max-h-52 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-ink">
+                          {workspace.gitState.diff}
+                        </pre>
+                      )}
                     </div>
                   )}
                 </div>
@@ -540,6 +621,29 @@ export default function GithubPage() {
           <Button type="submit" variant="dark" loading={creatingRepo}>
             <GitPullRequest className="h-4 w-4" />
             Create Repo &amp; Clone Workspace
+          </Button>
+        </form>
+      </Modal>
+
+      <Modal open={newFileOpen} onClose={() => setNewFileOpen(false)} title="Create New Workspace File">
+        <form onSubmit={handleCreateNewFile} className="space-y-4">
+          <Input
+            label="Relative File Path"
+            placeholder="src/cookie-policy.tsx"
+            value={newFilePath}
+            onChange={(e) => setNewFilePath(e.target.value)}
+            required
+          />
+          <Textarea
+            label="File Content"
+            rows={8}
+            value={newFileContent}
+            onChange={(e) => setNewFileContent(e.target.value)}
+            required
+          />
+          <Button type="submit" variant="dark" loading={busyAction === "new-file"}>
+            <Save className="h-4 w-4" />
+            Create on Branch ({branchName})
           </Button>
         </form>
       </Modal>

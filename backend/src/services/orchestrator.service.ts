@@ -135,8 +135,13 @@ export class OrchestratorService {
             : dotEnvConfig.GITHUB_DEFAULT_OWNER || undefined;
 
         const existingRepos = await this.engRepo.findAllRepos();
+        const normalizeName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const targetNorm = normalizeName(repoName);
+        const instructionNorm = normalizeName(String(task.inputPayload.instruction || ''));
         let repo = existingRepos.find(
-          (r) => r.name.toLowerCase() === repoName.toLowerCase(),
+          (r) =>
+            normalizeName(r.name) === targetNorm ||
+            (normalizeName(r.name).length >= 5 && instructionNorm.includes(normalizeName(r.name))),
         );
         if (!repo) {
           repo = await this.engineeringService.createGithubRepo({

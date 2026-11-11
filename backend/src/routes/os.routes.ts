@@ -96,6 +96,7 @@ export function createOsRouter(): Router {
   );
 
   router.get('/github/repos', domainController.listRepos);
+  router.get('/github/probe', domainController.probeGithub);
   router.post(
     '/github/repos',
     requireRoles(UserRole.CEO, UserRole.ADMIN),

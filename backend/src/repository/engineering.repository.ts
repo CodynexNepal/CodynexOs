@@ -36,6 +36,10 @@ export class EngineeringRepository {
     return this.prTable.find({ order: { createdAt: 'DESC' } });
   }
 
+  findPullRequestById(id: string) {
+    return this.prTable.findOne({ where: { id } });
+  }
+
   savePullRequest(data: Partial<GithubPullRequestEntity>) {
     return this.prTable.save(this.prTable.create(data));
   }
