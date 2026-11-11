@@ -3,6 +3,7 @@ import { AiUsageLogEntity } from '../../entities/ai-usage-log.entity';
 import { BudgetPolicyEntity } from '../../entities/budget-policy.entity';
 import { AiProviderName, AiUsageStatus } from '../../constant/enum.constant';
 import { sha256Hex } from '../../utils/encryption.util';
+import { resolveRuntimeSecret } from '../../services/runtime-secrets.service';
 import {
   AiCompletionRequest,
   AiCompletionResponse,
@@ -44,6 +45,71 @@ export class ModelRouterService {
       isPaid: adapter.isPaid,
       configured: adapter.isConfigured(),
     }));
+  }
+
+  public async probeFreeProviders() {
+    const geminiKey = await resolveRuntimeSecret('gemini_api_key');
+    const groqKey = await resolveRuntimeSecret('groq_api_key');
+
+    const geminiResult: { configured: boolean; ok: boolean; detail: string; activeModels: string[] } =
+      { configured: Boolean(geminiKey), ok: false, detail: 'Not configured', activeModels: [] };
+
+    if (geminiKey) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(geminiKey)}`,
+        );
+        const body = (await res.json()) as {
+          models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+          error?: { message?: string };
+        };
+        if (res.ok) {
+          geminiResult.ok = true;
+          geminiResult.activeModels = (body.models ?? [])
+            .filter((m) => m.name && m.supportedGenerationMethods?.includes('generateContent'))
+            .slice(0, 8)
+            .map((m) => m.name!.replace(/^models\//, ''));
+          geminiResult.detail = `Connected (${geminiResult.activeModels.length} active models)`;
+        } else {
+          geminiResult.detail = body.error?.message || `HTTP ${res.status}`;
+        }
+      } catch (err) {
+        geminiResult.detail = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    const groqResult: { configured: boolean; ok: boolean; detail: string; activeModels: string[] } = {
+      configured: Boolean(groqKey),
+      ok: false,
+      detail: 'Not configured',
+      activeModels: [],
+    };
+
+    if (groqKey) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/models', {
+          headers: { Authorization: `Bearer ${groqKey}` },
+        });
+        const body = (await res.json()) as {
+          data?: Array<{ id?: string; active?: boolean }>;
+          error?: { message?: string };
+        };
+        if (res.ok) {
+          groqResult.ok = true;
+          groqResult.activeModels = (body.data ?? [])
+            .filter((m) => m.id && m.active !== false)
+            .slice(0, 8)
+            .map((m) => m.id!);
+          groqResult.detail = `Connected (${groqResult.activeModels.length} active models)`;
+        } else {
+          groqResult.detail = body.error?.message || `HTTP ${res.status}`;
+        }
+      } catch (err) {
+        groqResult.detail = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    return { gemini: geminiResult, groq: groqResult };
   }
 
   private async getGlobalPolicy(): Promise<BudgetPolicyEntity | null> {

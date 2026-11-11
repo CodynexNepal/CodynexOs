@@ -8,7 +8,7 @@ import {
   AiProviderError,
 } from '../ai-provider.interface';
 
-const GROQ_FALLBACK_MODELS = ['llama-3.1-8b-instant', 'llama3-8b-8192', 'gemma2-9b-it'];
+const GROQ_FALLBACK_MODELS = ['llama-3.1-8b-instant', 'openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
 
 export class GroqAdapter implements AiProviderAdapter {
   public readonly name = AiProviderName.GROQ;

@@ -102,6 +102,18 @@ export function createOsRouter(): Router {
     requireParam('id', { uuid: true }),
     domainController.syncRepo,
   );
+  router.get(
+    '/github/repos/:id/analyze',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.analyzeRepo,
+  );
+  router.post(
+    '/github/repos/:id/branch-pr',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.createBranchPr,
+  );
   router.get('/github/pull-requests', domainController.listPullRequests);
 
   router.get('/qa/reports', domainController.listQaReports);
@@ -132,9 +144,28 @@ export function createOsRouter(): Router {
     requireParam('id', { uuid: true }),
     domainController.optOutLead,
   );
+  router.post(
+    '/crm/leads/:id/outreach',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.draftLeadOutreach,
+  );
+  router.patch(
+    '/crm/leads/:id/stage',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.updateLeadStage,
+  );
   router.get('/crm/interactions', domainController.listInteractions);
+  router.post(
+    '/crm/interactions/:id/classify',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.classifyReply,
+  );
 
   router.get('/ai-usage', domainController.aiUsage);
+  router.get('/ai-usage/probe', domainController.probeProviders);
   router.put(
     '/ai-usage/budget',
     requireRoles(UserRole.CEO),

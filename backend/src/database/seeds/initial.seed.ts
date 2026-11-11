@@ -5,6 +5,7 @@ import { AiEmployeeEntity } from '../../entities/ai-employee.entity';
 import { BudgetPolicyEntity } from '../../entities/budget-policy.entity';
 import { SystemSettingEntity } from '../../entities/system-setting.entity';
 import { CompanyMemoryEntity } from '../../entities/company-memory.entity';
+import { KnowledgeDocumentEntity } from '../../entities/knowledge-document.entity';
 import { AI_EMPLOYEE_SEEDS, DEPARTMENT_SEEDS } from '../../constant/company.constant';
 import { MemoryCategory, UserRole } from '../../constant/enum.constant';
 import { dotEnvConfig } from '../../configs/envConfig';
@@ -18,6 +19,7 @@ export async function runInitialSeed(): Promise<void> {
   const budgetRepo = AppDataSource.getRepository(BudgetPolicyEntity);
   const settingRepo = AppDataSource.getRepository(SystemSettingEntity);
   const memoryRepo = AppDataSource.getRepository(CompanyMemoryEntity);
+  const knowledgeRepo = AppDataSource.getRepository(KnowledgeDocumentEntity);
 
   // 1. Seed CEO account if absent
   let ceo = await userRepo.findOne({ where: { email: dotEnvConfig.CEO_EMAIL } });
@@ -144,5 +146,56 @@ export async function runInitialSeed(): Promise<void> {
         tags: ['charter', 'governance', 'cost-control'],
       }),
     );
+  }
+
+  // 7. Seed foundational Knowledge Base SOPs & Playbooks if empty
+  const kbCount = await knowledgeRepo.count();
+  if (kbCount === 0) {
+    const engDept = deptMap.get('engineering');
+    const mktDept = deptMap.get('marketing');
+    const salesDept = deptMap.get('sales');
+
+    const sops = [
+      {
+        departmentId: engDept?.id ?? null,
+        title: 'Engineering SOP: HostelGhar Backend & Next.js Standards',
+        slug: 'engineering-sop-hostelghar-standards',
+        contentMd:
+          '1. Backend follows Express 5 + TypeScript + TypeORM layered flow: route -> middleware/decorator -> controller -> service -> repository.\n2. Keep all TypeORM queries inside src/repository/*.\n3. Frontend uses Next.js App Router, Tailwind CSS, React Hook Form, and Yup.\n4. Never push directly to main; always create a task branch and Pull Request.',
+        isTrusted: true,
+        createdBy: ceo.id,
+      },
+      {
+        departmentId: engDept?.id ?? null,
+        title: 'UI/UX Playbook: Wise-Inspired Flat Design & Color Theory',
+        slug: 'ui-ux-playbook-wise-flat-design',
+        contentMd:
+          '1. Zero gradients, zero glassmorphism, zero artificial neon glow.\n2. Apply 60-30-10 color balance: warm alabaster (#F7F7F5) and white (#FFFFFF) surfaces, deep charcoal ink (#0E0F0C), and lime (#C3FF7D / #9FE870) strictly for primary CTAs and active states.\n3. Use tabular-nums for metrics, tokens, and timestamps.',
+        isTrusted: true,
+        createdBy: ceo.id,
+      },
+      {
+        departmentId: engDept?.id ?? null,
+        title: 'QA Verification Playbook: Mandatory Release Gate',
+        slug: 'qa-verification-playbook-release-gate',
+        contentMd:
+          'Before marking any engineering task complete: run tsc --noEmit, eslint, unit tests, and integration tests. Check API responses, RBAC permissions, and database integrity. If any check fails, spawn a linked correction task assigned to the responsible engineer.',
+        isTrusted: true,
+        createdBy: ceo.id,
+      },
+      {
+        departmentId: salesDept?.id ?? mktDept?.id ?? null,
+        title: 'Sales & Marketing SOP: Ethical Outreach & Opt-Out Policy',
+        slug: 'sales-marketing-sop-ethical-outreach',
+        contentMd:
+          '1. Collect prospects only from authorized public business listings.\n2. Deduplicate leads before enrollment and never fabricate contact details.\n3. Submit initial outreach campaigns for CEO approval before sending.\n4. Immediately honor opt-out requests and block future outbound drafts.',
+        isTrusted: true,
+        createdBy: ceo.id,
+      },
+    ];
+
+    for (const sop of sops) {
+      await knowledgeRepo.save(knowledgeRepo.create(sop));
+    }
   }
 }

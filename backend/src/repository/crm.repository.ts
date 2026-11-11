@@ -56,6 +56,10 @@ export class CrmRepository {
     });
   }
 
+  findInteractionById(id: string) {
+    return this.interactionRepo.findOne({ where: { id } });
+  }
+
   saveInteraction(data: Partial<CrmInteractionEntity>) {
     return this.interactionRepo.save(this.interactionRepo.create(data));
   }

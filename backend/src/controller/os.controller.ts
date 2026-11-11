@@ -7,6 +7,7 @@ import { OrganizationRepository } from '../repository/organization.repository';
 import { ProjectRepository } from '../repository/project.repository';
 import { TaskRepository } from '../repository/task.repository';
 import { GovernanceRepository } from '../repository/governance.repository';
+import { CrmRepository } from '../repository/crm.repository';
 import { NotificationService } from '../services/notification.service';
 import { AuditService } from '../services/audit.service';
 import { getRequiredParam } from '../decorators/http.decorator';
@@ -23,6 +24,7 @@ export class OsController {
     private readonly projectRepo: ProjectRepository,
     private readonly taskRepo: TaskRepository,
     private readonly governanceRepo: GovernanceRepository,
+    private readonly crmRepo: CrmRepository,
     private readonly notificationService: NotificationService,
     private readonly auditService: AuditService,
   ) {}
@@ -229,6 +231,17 @@ export class OsController {
           decision === 'APPROVED' ? 'INFO' : 'WARN',
           `CEO ${decision.toLowerCase()} approval request: ${approval.summary}`,
         );
+      }
+
+      const campaignId =
+        typeof approval.payload?.campaignId === 'string' ? approval.payload.campaignId : null;
+      if (campaignId) {
+        const campaign = await this.crmRepo.findCampaignById(campaignId);
+        if (campaign) {
+          campaign.status = decision === 'APPROVED' ? 'APPROVED' : 'PAUSED';
+          campaign.approvedBy = decision === 'APPROVED' ? req.user!.userId : null;
+          await this.crmRepo.saveCampaign(campaign);
+        }
       }
 
       await this.auditService.log({

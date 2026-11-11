@@ -59,7 +59,8 @@ export const codynexApi = {
   },
   knowledge: {
     list: () => api.get("/knowledge"),
-    create: (body: { title: string; contentMd: string }) => api.post("/knowledge", body),
+    create: (body: { title: string; contentMd: string; departmentId?: string }) =>
+      api.post("/knowledge", body),
   },
   github: {
     repos: () => api.get("/github/repos"),
@@ -70,6 +71,11 @@ export const codynexApi = {
       isWriteAuthorized?: boolean;
     }) => api.post("/github/repos", body),
     syncRepo: (id: string) => api.post(`/github/repos/${id}/sync`),
+    analyzeRepo: (id: string) => api.get(`/github/repos/${id}/analyze`),
+    createBranchPr: (
+      id: string,
+      body: { branchName: string; title: string; body?: string }
+    ) => api.post(`/github/repos/${id}/branch-pr`, body),
     pullRequests: () => api.get("/github/pull-requests"),
   },
   qa: {
@@ -98,10 +104,19 @@ export const codynexApi = {
       website?: string;
     }) => api.post("/crm/leads", body),
     optOut: (id: string) => api.post(`/crm/leads/${id}/opt-out`),
+    draftOutreach: (id: string, body: { subject: string; body: string; channel?: string }) =>
+      api.post(`/crm/leads/${id}/outreach`, body),
+    updateStage: (id: string, body: { stage: string; nextFollowUpAt?: string }) =>
+      api.patch(`/crm/leads/${id}/stage`, body),
     interactions: () => api.get("/crm/interactions"),
+    classifyReply: (
+      interactionId: string,
+      classification: "INTERESTED" | "NOT_INTERESTED" | "OPT_OUT" | "QUESTION" | "DEMO_REQUEST"
+    ) => api.post(`/crm/interactions/${interactionId}/classify`, { classification }),
   },
   aiUsage: {
     summary: () => api.get("/ai-usage"),
+    probe: () => api.get("/ai-usage/probe"),
     updateBudget: (body: {
       dailyTokenLimit: number;
       maxConcurrentRequests: number;

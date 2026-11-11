@@ -165,4 +165,72 @@ export class CrmService {
   listInteractions(leadId?: string) {
     return this.crmRepo.findInteractions(leadId);
   }
+
+  async updateLeadStage(
+    leadId: string,
+    stage: LeadStage,
+    nextFollowUpAt: string | undefined,
+    actorId: string,
+  ) {
+    const lead = await this.crmRepo.findLeadById(leadId);
+    if (!lead) throw ApiError.notFound('Lead not found.');
+    if (lead.isOptedOut && stage !== LeadStage.OPTED_OUT) {
+      throw ApiError.badRequest('Opted-out leads cannot be moved back into active pipeline.');
+    }
+
+    lead.stage = stage;
+    if (nextFollowUpAt) {
+      lead.nextFollowUpAt = new Date(nextFollowUpAt);
+    }
+    const saved = await this.crmRepo.saveLead(lead);
+
+    await this.auditService.log({
+      actorType: 'USER',
+      actorId,
+      action: 'CRM_LEAD_STAGE_UPDATED',
+      resourceType: 'crm_lead',
+      resourceId: lead.id,
+      metadata: { stage },
+    });
+
+    return saved;
+  }
+
+  async classifyInteractionReply(
+    interactionId: string,
+    classification: 'INTERESTED' | 'NOT_INTERESTED' | 'OPT_OUT' | 'QUESTION' | 'DEMO_REQUEST',
+    actorId: string,
+  ) {
+    const interaction = await this.crmRepo.findInteractionById(interactionId);
+    if (!interaction) throw ApiError.notFound('Interaction not found.');
+
+    interaction.replyClassification = classification;
+    await this.crmRepo.saveInteraction(interaction);
+
+    const lead = await this.crmRepo.findLeadById(interaction.leadId);
+    if (lead) {
+      if (classification === 'OPT_OUT') {
+        lead.isOptedOut = true;
+        lead.stage = LeadStage.OPTED_OUT;
+      } else if (classification === 'DEMO_REQUEST') {
+        lead.stage = LeadStage.DEMO_SCHEDULED;
+      } else if (classification === 'INTERESTED' || classification === 'QUESTION') {
+        lead.stage = LeadStage.REPLIED;
+      } else if (classification === 'NOT_INTERESTED') {
+        lead.stage = LeadStage.LOST;
+      }
+      await this.crmRepo.saveLead(lead);
+    }
+
+    await this.auditService.log({
+      actorType: 'USER',
+      actorId,
+      action: 'CRM_REPLY_CLASSIFIED',
+      resourceType: 'crm_interaction',
+      resourceId: interaction.id,
+      metadata: { classification },
+    });
+
+    return interaction;
+  }
 }

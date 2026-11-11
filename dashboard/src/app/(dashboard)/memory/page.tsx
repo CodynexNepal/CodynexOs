@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState, ErrorBanner } from "@/components/ui/EmptyState";
+import { StructuredReportView } from "@/components/domain/StructuredReportView";
 import { useApiQuery } from "@/hooks/useApi";
 import { codynexApi } from "@/lib/codynexOs";
 import { memorySchema } from "@/schemas/forms.schema";
@@ -107,7 +108,7 @@ export default function MemoryPage() {
           <div className="space-y-3">
             {(data ?? []).map((item) => (
               <Card key={item.id} className="p-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-surface-border pb-2.5">
                   <div className="flex items-center gap-2">
                     <Badge tone="blue">{item.category}</Badge>
                     <h3 className="text-sm font-bold text-ink">{item.title}</h3>
@@ -116,7 +117,7 @@ export default function MemoryPage() {
                     {formatDateTime(item.createdAt)}
                   </span>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-ink-muted">{item.content}</p>
+                <StructuredReportView content={item.content} />
               </Card>
             ))}
           </div>

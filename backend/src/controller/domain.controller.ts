@@ -3,6 +3,7 @@ import { MemoryRepository } from '../repository/memory.repository';
 import { EngineeringService } from '../services/engineering.service';
 import { CrmService } from '../services/crm.service';
 import { GovernanceRepository } from '../repository/governance.repository';
+import { ModelRouterService } from '../ai/router/model-router.service';
 import { AuditService } from '../services/audit.service';
 import { getRequiredParam } from '../decorators/http.decorator';
 import { STATUS_CODE } from '../constant/statusCode.interface';
@@ -14,6 +15,7 @@ export class DomainController {
     private readonly engService: EngineeringService,
     private readonly crmService: CrmService,
     private readonly governanceRepo: GovernanceRepository,
+    private readonly modelRouter: ModelRouterService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -102,6 +104,35 @@ export class DomainController {
       const id = getRequiredParam(req, 'id');
       const data = await this.engService.syncRepoFromGithub(id, req.user!.userId);
       res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  analyzeRepo = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.engService.analyzeRepo(id, req.user!.userId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  createBranchPr = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.engService.createTaskBranchAndPr({
+        repoId: id,
+        branchName: req.body.branchName,
+        title: req.body.title,
+        body: req.body.body,
+        taskId: req.body.taskId,
+        filePath: req.body.filePath,
+        fileContent: req.body.fileContent,
+        actorId: req.user!.userId,
+      });
+      res.status(STATUS_CODE.CREATED).json({ success: true, data });
     } catch (err) {
       next(err);
     }
@@ -198,6 +229,49 @@ export class DomainController {
     }
   };
 
+  draftLeadOutreach = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.crmService.draftOutreach(id, {
+        subject: req.body.subject,
+        body: req.body.body,
+        channel: req.body.channel ?? 'EMAIL',
+      });
+      res.status(STATUS_CODE.CREATED).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateLeadStage = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.crmService.updateLeadStage(
+        id,
+        req.body.stage,
+        req.body.nextFollowUpAt,
+        req.user!.userId,
+      );
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  classifyReply = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.crmService.classifyInteractionReply(
+        id,
+        req.body.classification,
+        req.user!.userId,
+      );
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   aiUsage = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const [summary, logs, budget] = await Promise.all([
@@ -206,6 +280,15 @@ export class DomainController {
         this.governanceRepo.findGlobalBudget(),
       ]);
       res.status(STATUS_CODE.OK).json({ success: true, data: { summary, logs, budget } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  probeProviders = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.probeFreeProviders();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
     } catch (err) {
       next(err);
     }

@@ -86,6 +86,7 @@ export function getOsContainer(): OsContainer {
       projectRepo,
       taskRepo,
       governanceRepo,
+      crmRepo,
       notificationService,
       auditService,
     ),
@@ -94,6 +95,7 @@ export function getOsContainer(): OsContainer {
       engineeringService,
       crmService,
       governanceRepo,
+      modelRouter,
       auditService,
     ),
   };

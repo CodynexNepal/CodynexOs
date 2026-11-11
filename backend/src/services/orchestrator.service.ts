@@ -17,6 +17,10 @@ import { NotificationService } from './notification.service';
 import { AuditService } from './audit.service';
 import { socketServer } from '../socket/socket.server';
 import { logger } from '../utils/logger.util';
+import {
+  formatReportAsReadableText,
+  parseStructuredAiResult,
+} from '../utils/report-formatter.util';
 
 export class OrchestratorService {
   private readonly workerId = `worker-${os.hostname()}-${process.pid}`;
@@ -69,13 +73,19 @@ export class OrchestratorService {
     socketServer.emit('task:updated', { taskId: task.id, status: TaskStatus.RUNNING });
 
     try {
-      const memories = await this.memoryRepo.searchMemory(task.title.slice(0, 40));
+      const [memories, sops] = await Promise.all([
+        this.memoryRepo.searchMemory(task.title.slice(0, 40)),
+        typeof this.memoryRepo.findTrustedKnowledgeForDepartment === 'function'
+          ? this.memoryRepo.findTrustedKnowledgeForDepartment(task.departmentId)
+          : Promise.resolve([]),
+      ]);
       const { wrapped } = sanitizeUntrustedContent(
         `${task.description}\n\nInput: ${JSON.stringify(task.inputPayload)}`,
         `task:${task.id}`,
       );
 
       let outputPayload: Record<string, unknown>;
+      let memoryReadableContent = '';
       const emp = task.assignedEmployee;
 
       try {
@@ -84,7 +94,11 @@ export class OrchestratorService {
             systemPrompt: emp
               ? `${emp.systemInstruction}\nApproved tools: ${emp.allowedTools.join(', ')}. Return a concise structured JSON report with keys: summary, deliverables, risks, nextRecommendations.`
               : 'Return a concise JSON report with keys: summary, deliverables, risks.',
-            userPrompt: `Relevant Memory:\n${memories
+            userPrompt: `Trusted Company SOPs & Playbooks:\n${
+              sops.length > 0
+                ? sops.map((s) => `- ${s.title}: ${s.contentMd.slice(0, 320)}`).join('\n')
+                : 'None'
+            }\n\nRelevant Memory:\n${memories
               .slice(0, 4)
               .map((m) => `- ${m.title}: ${m.content.slice(0, 160)}`)
               .join('\n')}\n\nTask:\n${wrapped}`,
@@ -101,13 +115,22 @@ export class OrchestratorService {
             employeeDailyTokenBudget: emp?.dailyTokenBudget,
           },
         );
+        const totalTokens = aiRes.inputTokens + aiRes.outputTokens;
+        const parsedReport = parseStructuredAiResult(aiRes.content);
         outputPayload = {
           mode: 'ai',
           provider: aiRes.provider,
           model: aiRes.model,
-          tokens: aiRes.inputTokens + aiRes.outputTokens,
-          result: aiRes.content,
+          tokens: totalTokens,
+          report: parsedReport ?? aiRes.content,
         };
+        memoryReadableContent = formatReportAsReadableText({
+          provider: aiRes.provider,
+          model: aiRes.model,
+          tokens: totalTokens,
+          rawContent: aiRes.content,
+          parsed: parsedReport,
+        });
       } catch (aiErr) {
         if (aiErr instanceof AiProviderError && aiErr.code === 'NOT_CONFIGURED') {
           await this.taskRepo.updateById(task.id, {
@@ -226,7 +249,7 @@ export class OrchestratorService {
         sourceTaskId: task.id,
         category: MemoryCategory.LESSON_LEARNED,
         title: `Completed Task: ${task.title}`,
-        content: JSON.stringify(outputPayload).slice(0, 1500),
+        content: memoryReadableContent || JSON.stringify(outputPayload),
         tags: [task.taskType, emp?.slug ?? 'system'],
       });
 

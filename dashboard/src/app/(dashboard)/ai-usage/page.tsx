@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { Coins, Save } from "lucide-react";
+import { Activity, Coins, Save } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge, statusTone } from "@/components/ui/Badge";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { EmptyState, ErrorBanner } from "@/components/ui/EmptyState";
 import { useApiQuery } from "@/hooks/useApi";
-import { codynexApi } from "@/lib/codynexOs";
+import { codynexApi, unwrap } from "@/lib/codynexOs";
 import { budgetSchema } from "@/schemas/forms.schema";
 import { toApiError } from "@/lib/axios";
 import { formatDateTime, formatNumber } from "@/lib/utils";
@@ -46,6 +46,24 @@ export default function AiUsagePage() {
   const { data, error, refetch } = useApiQuery<AiUsageResponse>(() => codynexApi.aiUsage.summary());
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<{
+    gemini: { configured: boolean; ok: boolean; detail: string; activeModels: string[] };
+    groq: { configured: boolean; ok: boolean; detail: string; activeModels: string[] };
+  } | null>(null);
+
+  const handleProbe = async () => {
+    setProbing(true);
+    setSaveErr(null);
+    try {
+      const res = await codynexApi.aiUsage.probe();
+      setProbeResult(unwrap(res.data));
+    } catch (err) {
+      setSaveErr(toApiError(err).message);
+    } finally {
+      setProbing(false);
+    }
+  };
 
   const {
     register,
@@ -129,7 +147,30 @@ export default function AiUsagePage() {
           </Card>
 
           <Card>
-            <CardHeader title="Provider Quota Summary" subtitle="Actual logged usage & quota hits" />
+            <CardHeader
+              title="Provider Quota Summary"
+              subtitle="Actual logged usage & quota hits"
+              action={
+                <Button variant="outline" size="sm" onClick={handleProbe} loading={probing}>
+                  <Activity className="h-3.5 w-3.5" />
+                  Test Free Keys (0 Tokens)
+                </Button>
+              }
+            />
+            {probeResult && (
+              <div className="space-y-2 border-b border-surface-border bg-surface-muted px-5 py-3 text-xs">
+                {(["gemini", "groq"] as const).map((p) => (
+                  <div key={p} className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-bold uppercase text-ink">{p}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={probeResult[p].ok ? "green" : "amber"}>
+                        {probeResult[p].detail}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="divide-y divide-surface-border">
               {!data || data.summary.byProvider.length === 0 ? (
                 <div className="p-5">

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState, ErrorBanner } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { StructuredReportView } from "@/components/domain/StructuredReportView";
 import { useApiQuery } from "@/hooks/useApi";
 import { useDomainSocket } from "@/hooks/useDomainSocket";
 import { codynexApi, unwrap } from "@/lib/codynexOs";
@@ -141,15 +142,13 @@ export default function TasksPage() {
       >
         {selectedTask && (
           <div className="space-y-4 text-xs">
-            <div className="rounded-md border border-surface-border bg-surface-muted p-3">
-              <p className="font-semibold text-ink">Verification / Output</p>
-              <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-[11px] text-ink-muted">
-                {JSON.stringify(
-                  selectedTask.verificationResult ?? selectedTask.outputPayload ?? { status: selectedTask.status },
-                  null,
-                  2
-                )}
-              </pre>
+            <div className="rounded-md border border-surface-border bg-surface-muted/40 p-3.5">
+              <p className="mb-2 font-semibold text-ink">Execution Output & Verification</p>
+              {selectedTask.outputPayload ? (
+                <StructuredReportView content={selectedTask.outputPayload} />
+              ) : (
+                <p className="text-ink-muted">Status: {selectedTask.status}</p>
+              )}
             </div>
             <div className="space-y-2">
               <p className="font-semibold text-ink">Execution Log History</p>

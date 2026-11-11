@@ -31,6 +31,24 @@ export class MemoryRepository {
     return this.kbRepo.find({ order: { updatedAt: 'DESC' } });
   }
 
+  async findTrustedKnowledgeForDepartment(departmentId?: string) {
+    const qb = this.kbRepo
+      .createQueryBuilder('k')
+      .where('k.is_trusted = true')
+      .orderBy('k.updated_at', 'DESC')
+      .take(6);
+
+    if (departmentId) {
+      qb.andWhere('(k.department_id IS NULL OR k.department_id = :departmentId)', {
+        departmentId,
+      });
+    } else {
+      qb.andWhere('k.department_id IS NULL');
+    }
+
+    return qb.getMany();
+  }
+
   saveKnowledge(data: Partial<KnowledgeDocumentEntity>) {
     return this.kbRepo.save(this.kbRepo.create(data));
   }
