@@ -39,7 +39,7 @@ export class AiEmployeeEntity {
   @Column({ name: 'preferred_provider', type: 'varchar', length: 32, default: 'gemini' })
   preferredProvider!: string;
 
-  @Column({ name: 'preferred_model', type: 'varchar', length: 100, default: 'gemini-2.5-flash' })
+  @Column({ name: 'preferred_model', type: 'varchar', length: 100, default: 'gemini-3.8-flash' })
   preferredModel!: string;
 
   @Column({ name: 'fallback_provider', type: 'varchar', length: 32, nullable: true, default: 'groq' })
@@ -50,7 +50,7 @@ export class AiEmployeeEntity {
     type: 'varchar',
     length: 100,
     nullable: true,
-    default: 'llama-3.3-70b-versatile',
+    default: 'llama-3.1-8b-instant',
   })
   fallbackModel!: string | null;
 

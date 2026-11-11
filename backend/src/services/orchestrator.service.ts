@@ -109,14 +109,61 @@ export class OrchestratorService {
           result: aiRes.content,
         };
       } catch (aiErr) {
+        if (aiErr instanceof AiProviderError && aiErr.code === 'NOT_CONFIGURED') {
+          await this.taskRepo.updateById(task.id, {
+            status: TaskStatus.BLOCKED,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+          });
+          await this.taskRepo.updateExecution(execution.id, {
+            status: 'FAILED',
+            errorCode: aiErr.code,
+            errorMessage: aiErr.message,
+            finishedAt: new Date(),
+          });
+          await this.taskRepo.appendLog(
+            task.id,
+            'WARN',
+            `Task blocked: ${aiErr.message}`,
+            {},
+            execution.id,
+          );
+          return;
+        }
+
         if (
           aiErr instanceof AiProviderError &&
           (aiErr.code === 'RATE_LIMITED' || aiErr.code === 'QUOTA_EXHAUSTED')
         ) {
-          // Preserve task cleanly in QUEUED with backoff when free quotas are exhausted
-          const backoffSec = Math.min(300, Math.pow(2, task.retryCount + 1) * 15);
+          const nextRetry = task.retryCount + 1;
+          const maxQuotaPauses = Math.max(task.maxRetries, 5);
+          if (nextRetry > maxQuotaPauses) {
+            await this.taskRepo.updateById(task.id, {
+              status: TaskStatus.BLOCKED,
+              leaseOwner: null,
+              leaseExpiresAt: null,
+            });
+            await this.taskRepo.updateExecution(execution.id, {
+              status: 'FAILED',
+              errorCode: aiErr.code,
+              errorMessage: aiErr.message,
+              finishedAt: new Date(),
+            });
+            await this.taskRepo.appendLog(
+              task.id,
+              'WARN',
+              `Task paused (BLOCKED) after ${maxQuotaPauses} quota/rate-limit attempts: ${aiErr.message}`,
+              {},
+              execution.id,
+            );
+            return;
+          }
+
+          // Preserve task cleanly in QUEUED with bounded exponential backoff
+          const backoffSec = Math.min(300, Math.pow(2, nextRetry) * 15);
           await this.taskRepo.updateById(task.id, {
             status: TaskStatus.QUEUED,
+            retryCount: nextRetry,
             leaseOwner: null,
             leaseExpiresAt: null,
             nextRunAt: new Date(Date.now() + backoffSec * 1000),
@@ -130,7 +177,7 @@ export class OrchestratorService {
           await this.taskRepo.appendLog(
             task.id,
             'WARN',
-            `Paused & preserved due to AI quota/rate limit: ${aiErr.message}. Retry scheduled in ${backoffSec}s.`,
+            `Paused & preserved due to AI quota/rate limit: ${aiErr.message}. Retry #${nextRetry} scheduled in ${backoffSec}s.`,
             {},
             execution.id,
           );

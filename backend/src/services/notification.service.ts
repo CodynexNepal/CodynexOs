@@ -3,6 +3,7 @@ import { dotEnvConfig } from '../configs/envConfig';
 import { createSmtpTransporter } from '../configs/smtp.config';
 import { socketServer } from '../socket/socket.server';
 import { logger } from '../utils/logger.util';
+import { resolveRuntimeSecret } from './runtime-secrets.service';
 
 export class NotificationService {
   constructor(private readonly governanceRepo: GovernanceRepository) {}
@@ -19,14 +20,16 @@ export class NotificationService {
     const channels: string[] = ['DASHBOARD'];
 
     if (params.sendExternal) {
-      if (dotEnvConfig.TELEGRAM_BOT_TOKEN && dotEnvConfig.TELEGRAM_CHAT_ID) {
+      const telegramToken = await resolveRuntimeSecret('telegram_bot_token');
+      const telegramChatId = await resolveRuntimeSecret('telegram_chat_id');
+      if (telegramToken && telegramChatId) {
         try {
-          const url = `https://api.telegram.org/bot${dotEnvConfig.TELEGRAM_BOT_TOKEN}/sendMessage`;
+          const url = `https://api.telegram.org/bot${telegramToken}/sendMessage`;
           const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              chat_id: dotEnvConfig.TELEGRAM_CHAT_ID,
+              chat_id: telegramChatId,
               text: `[CodyNex OS · ${params.severity}] ${params.title}\n\n${params.message}`,
             }),
           });

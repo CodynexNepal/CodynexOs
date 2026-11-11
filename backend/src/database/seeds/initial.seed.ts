@@ -73,6 +73,21 @@ export async function runInitialSeed(): Promise<void> {
           isActive: true,
         }),
       );
+    } else if (
+      existing.preferredModel === 'gemini-2.5-flash' ||
+      existing.fallbackModel === 'llama-3.3-70b-versatile'
+    ) {
+      await empRepo.update(
+        { id: existing.id },
+        {
+          ...(existing.preferredModel === 'gemini-2.5-flash'
+            ? { preferredModel: dotEnvConfig.GEMINI_MODEL }
+            : {}),
+          ...(existing.fallbackModel === 'llama-3.3-70b-versatile'
+            ? { fallbackModel: dotEnvConfig.GROQ_MODEL }
+            : {}),
+        },
+      );
     }
   }
 

@@ -1,11 +1,14 @@
 import { dotEnvConfig } from '../../configs/envConfig';
 import { AiProviderName } from '../../constant/enum.constant';
+import { resolveRuntimeSecret } from '../../services/runtime-secrets.service';
 import {
   AiCompletionRequest,
   AiCompletionResponse,
   AiProviderAdapter,
   AiProviderError,
 } from '../ai-provider.interface';
+
+const GROQ_FALLBACK_MODELS = ['llama-3.1-8b-instant', 'llama3-8b-8192', 'gemma2-9b-it'];
 
 export class GroqAdapter implements AiProviderAdapter {
   public readonly name = AiProviderName.GROQ;
@@ -15,22 +18,39 @@ export class GroqAdapter implements AiProviderAdapter {
     return Boolean(dotEnvConfig.GROQ_API_KEY);
   }
 
-  async complete(req: AiCompletionRequest): Promise<AiCompletionResponse> {
-    if (!this.isConfigured()) {
-      throw new AiProviderError(
-        this.name,
-        'NOT_CONFIGURED',
-        'GROQ_API_KEY is not configured. Add a free-tier Groq key in Settings or .env.',
+  private async discoverChatModel(apiKey: string): Promise<string | null> {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/models', {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as {
+        data?: Array<{ id?: string; active?: boolean }>;
+      };
+      const usable = (body.data ?? []).filter(
+        (m) =>
+          m.id &&
+          m.active !== false &&
+          !/whisper|guard|tts|playai|vision|distil/i.test(m.id),
       );
+      const preferred = usable.find((m) => /llama-3\.1|llama-3\.3|qwen|mixtral/i.test(m.id!));
+      return preferred?.id || usable[0]?.id || null;
+    } catch {
+      return null;
     }
+  }
 
-    const model = req.model || dotEnvConfig.GROQ_MODEL;
+  private async invokeModel(
+    apiKey: string,
+    model: string,
+    req: AiCompletionRequest,
+  ): Promise<AiCompletionResponse> {
     const started = Date.now();
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${dotEnvConfig.GROQ_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model,
@@ -62,7 +82,7 @@ export class GroqAdapter implements AiProviderAdapter {
 
     if (!res.ok) {
       const msg = data.error?.message || `Groq HTTP ${res.status}`;
-      if (/quota|limit/i.test(msg)) {
+      if (/quota|rate limit/i.test(msg)) {
         throw new AiProviderError(this.name, 'QUOTA_EXHAUSTED', msg);
       }
       throw new AiProviderError(this.name, 'PROVIDER_ERROR', msg);
@@ -77,5 +97,48 @@ export class GroqAdapter implements AiProviderAdapter {
       estimatedCostUsd: 0,
       latencyMs,
     };
+  }
+
+  async complete(req: AiCompletionRequest): Promise<AiCompletionResponse> {
+    const apiKey = await resolveRuntimeSecret('groq_api_key');
+    if (!apiKey) {
+      throw new AiProviderError(
+        this.name,
+        'NOT_CONFIGURED',
+        'GROQ_API_KEY is not configured. Add a free-tier Groq key in Settings or .env.',
+      );
+    }
+
+    const candidates = Array.from(
+      new Set([req.model || dotEnvConfig.GROQ_MODEL, ...GROQ_FALLBACK_MODELS].filter(Boolean)),
+    );
+
+    let lastErr: AiProviderError | null = null;
+    for (const model of candidates) {
+      try {
+        return await this.invokeModel(apiKey, model, req);
+      } catch (err) {
+        if (err instanceof AiProviderError) {
+          lastErr = err;
+          if (
+            err.code === 'PROVIDER_ERROR' &&
+            /does not exist|not have access|decommissioned|not_found/i.test(err.message)
+          ) {
+            continue;
+          }
+          throw err;
+        }
+        throw err;
+      }
+    }
+
+    const discovered = await this.discoverChatModel(apiKey);
+    if (discovered && !candidates.includes(discovered)) {
+      return this.invokeModel(apiKey, discovered, req);
+    }
+
+    throw (
+      lastErr || new AiProviderError(this.name, 'PROVIDER_ERROR', 'No compatible Groq model found.')
+    );
   }
 }

@@ -160,19 +160,21 @@ export class ModelRouterService {
     }
 
     const errors: string[] = [];
+    let configuredAttempted = false;
+    let sawQuotaOrRateLimit = false;
     this.activeRequests += 1;
     try {
       for (const candidate of candidateOrder) {
         const adapter = this.adapters.get(candidate.provider);
         if (!adapter) continue;
         if (adapter.isPaid && !allowPaid) continue;
-        if (!adapter.isConfigured()) continue;
 
         try {
           const response = await adapter.complete({
             ...req,
             model: candidate.model || req.model,
           });
+          configuredAttempted = true;
           await this.logUsage({
             taskId: opts.taskId,
             employeeId: opts.employeeId,
@@ -195,6 +197,13 @@ export class ModelRouterService {
           return response;
         } catch (err) {
           if (err instanceof AiProviderError) {
+            if (err.code === 'NOT_CONFIGURED') {
+              continue;
+            }
+            configuredAttempted = true;
+            if (err.code === 'RATE_LIMITED' || err.code === 'QUOTA_EXHAUSTED') {
+              sawQuotaOrRateLimit = true;
+            }
             errors.push(`${err.provider}: ${err.message}`);
             const status =
               err.code === 'RATE_LIMITED'
@@ -214,6 +223,7 @@ export class ModelRouterService {
               latencyMs: 0,
             });
           } else {
+            configuredAttempted = true;
             errors.push(`${candidate.provider}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
@@ -222,12 +232,18 @@ export class ModelRouterService {
       this.activeRequests = Math.max(0, this.activeRequests - 1);
     }
 
+    if (!configuredAttempted) {
+      throw new AiProviderError(
+        AiProviderName.GEMINI,
+        'NOT_CONFIGURED',
+        'No free-tier AI provider API key is configured. Add GEMINI_API_KEY or GROQ_API_KEY.',
+      );
+    }
+
     throw new AiProviderError(
       AiProviderName.GEMINI,
-      'QUOTA_EXHAUSTED',
-      errors.length > 0
-        ? `No configured free-tier AI provider succeeded: ${errors.join(' | ')}`
-        : 'No free-tier AI provider API key is configured. Add GEMINI_API_KEY or GROQ_API_KEY.',
+      sawQuotaOrRateLimit ? 'QUOTA_EXHAUSTED' : 'PROVIDER_ERROR',
+      `No configured free-tier AI provider succeeded: ${errors.join(' | ')}`,
     );
   }
 }
