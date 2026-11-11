@@ -54,6 +54,13 @@ export function getOsContainer(): OsContainer {
     notificationService,
     auditService,
   );
+  const engineeringService = new EngineeringService(
+    engRepo,
+    taskRepo,
+    orgRepo,
+    auditService,
+    governanceRepo,
+  );
   const orchestratorService = new OrchestratorService(
     taskRepo,
     projectRepo,
@@ -63,8 +70,8 @@ export function getOsContainer(): OsContainer {
     modelRouter,
     notificationService,
     auditService,
+    engineeringService,
   );
-  const engineeringService = new EngineeringService(engRepo, taskRepo, orgRepo, auditService);
   const crmService = new CrmService(crmRepo, governanceRepo, auditService);
   const dashboardService = new DashboardService(
     orgRepo,

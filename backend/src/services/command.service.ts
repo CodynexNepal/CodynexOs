@@ -49,7 +49,10 @@ export class CommandService {
         'Please specify the target deliverable, scope, or success criteria for this instruction.',
       );
     }
-    if (/\bdeploy\b|\bproduction\b/i.test(trimmed) && !/\bstaging\b|\bpreview\b/i.test(trimmed)) {
+    if (
+      /\bdeploy\b|\bproduction\b/i.test(trimmed) &&
+      !/\bstaging\b|\bpreview\b|\bauto\b|\bgithub\b/i.test(trimmed)
+    ) {
       questions.push(
         'Should engineering stop at a verified Pull Request & staging build, or prepare a production deployment approval request?',
       );
@@ -57,9 +60,137 @@ export class CommandService {
     return questions;
   }
 
+  private normalizePriorityNumber(val: unknown): number {
+    if (typeof val === 'number' && Number.isFinite(val)) {
+      return Math.min(100, Math.max(1, Math.round(val)));
+    }
+    if (typeof val === 'string') {
+      const upper = val.trim().toUpperCase();
+      if (upper === 'CRITICAL') return 95;
+      if (upper === 'HIGH') return 80;
+      if (upper === 'MEDIUM') return 50;
+      if (upper === 'LOW') return 25;
+      const parsed = Number(val);
+      if (Number.isFinite(parsed)) {
+        return Math.min(100, Math.max(1, Math.round(parsed)));
+      }
+    }
+    return 50;
+  }
+
+  private extractGithubContext(instruction: string): {
+    owner?: string;
+    repoName?: string;
+    isOrgInspect: boolean;
+    isRepoLifecycle: boolean;
+  } {
+    const lower = instruction.toLowerCase();
+    const stopWords = new Set([
+      'under',
+      'named',
+      'called',
+      'with',
+      'from',
+      'for',
+      'the',
+      'and',
+      'all',
+      'into',
+      'onto',
+      'this',
+      'that',
+      'new',
+    ]);
+    const ownerMatch = instruction.match(
+      /(?:under|org|organization|user|owner|from)\s+([a-zA-Z0-9-]{2,39})/i,
+    );
+    const slugMatch = instruction.match(/github\.com\/([a-zA-Z0-9-]+)(?:\/([a-zA-Z0-9._-]+))?/i);
+    const explicitRepoMatch = instruction.match(
+      /(?:project|repo|repository|app)\s+(?:named|called)\s+([a-zA-Z0-9._-]{2,60})/i,
+    );
+
+    const rawOwner = slugMatch?.[1] || ownerMatch?.[1];
+    const owner = rawOwner && !stopWords.has(rawOwner.toLowerCase()) ? rawOwner : undefined;
+    const rawRepo = slugMatch?.[2] || explicitRepoMatch?.[1];
+    const repoName = rawRepo && !stopWords.has(rawRepo.toLowerCase()) ? rawRepo : undefined;
+    const isOrgInspect =
+      /\b(read|list|fetch|import|scan|inspect)\b.*\b(repo|repos|repository|repositories)\b/i.test(
+        lower,
+      ) && Boolean(owner);
+    const isRepoLifecycle =
+      /\b(github|commit|push|pull request|\bpr\b|repo|repository)\b/i.test(lower) &&
+      /\b(create|new|build|scaffold|update|fix|deploy)\b/i.test(lower);
+
+    return { owner, repoName, isOrgInspect, isRepoLifecycle };
+  }
+
   private buildDeterministicPlan(instruction: string): PlannedTaskSpec[] {
     const lower = instruction.toLowerCase();
+    const gh = this.extractGithubContext(instruction);
     const tasks: PlannedTaskSpec[] = [];
+
+    if (gh.isOrgInspect) {
+      tasks.push({
+        key: 'github_inspect',
+        title: `Inspect & Import GitHub Repositories (${gh.owner})`,
+        description: `Query GitHub REST API for all repositories under '${gh.owner}', sync metadata into CodyNex OS, and summarize inventory.`,
+        departmentSlug: 'engineering',
+        employeeSlug: 'cto',
+        taskType: 'github_inspect',
+        priority: 95,
+        dependsOnKeys: [],
+        requiresApproval: false,
+      });
+      return tasks;
+    }
+
+    if (gh.isRepoLifecycle) {
+      tasks.push({
+        key: 'repo_provision',
+        title: 'Provision GitHub Workspace & Task Branch',
+        description: `Create or clone repository workspace and prepare an isolated feature branch for: ${instruction}`,
+        departmentSlug: 'engineering',
+        employeeSlug: 'devops_engineer',
+        taskType: 'repo_provision',
+        priority: 92,
+        dependsOnKeys: [],
+        requiresApproval: false,
+      });
+      tasks.push({
+        key: 'code_generate',
+        title: 'Generate & Write Implementation Files in Workspace',
+        description: `Write production code and documentation files into the isolated workspace branch for: ${instruction}`,
+        departmentSlug: 'engineering',
+        employeeSlug: 'backend_lead',
+        taskType: 'code_generate',
+        priority: 88,
+        dependsOnKeys: ['repo_provision'],
+        requiresApproval: false,
+      });
+      tasks.push({
+        key: 'qa_verify',
+        title: 'Run Workspace Typecheck, Lint & Automated Tests',
+        description: `Execute automated verification checks on workspace files and record QA report.`,
+        departmentSlug: 'engineering',
+        employeeSlug: 'qa_engineer',
+        taskType: 'qa_verify',
+        priority: 94,
+        dependsOnKeys: ['code_generate'],
+        requiresApproval: false,
+      });
+      tasks.push({
+        key: 'github_push_pr',
+        title: 'Commit, Push Task Branch & Open Pull Request',
+        description: `Commit verified changes, push isolated branch to GitHub, open Pull Request, and request CEO deployment approval.`,
+        departmentSlug: 'engineering',
+        employeeSlug: 'devops_engineer',
+        taskType: 'github_push_pr',
+        priority: 85,
+        dependsOnKeys: ['qa_verify'],
+        requiresApproval: false,
+      });
+      return tasks;
+    }
 
     if (/market|competitor|campaign|hostel|lead|outreach|sales|seo/.test(lower)) {
       tasks.push({
@@ -200,10 +331,11 @@ export class CommandService {
       .map((m) => `- [${m.category}] ${m.title}: ${m.content.slice(0, 200)}`)
       .join('\n');
 
+    const ghCtx = this.extractGithubContext(combinedInstruction);
     let planTasks: PlannedTaskSpec[] = this.buildDeterministicPlan(combinedInstruction);
     let plannerSource: 'ai' | 'deterministic' = 'deterministic';
 
-    if (clarificationQuestions.length === 0) {
+    if (clarificationQuestions.length === 0 && !ghCtx.isOrgInspect && !ghCtx.isRepoLifecycle) {
       const coo = await this.orgRepo.findEmployeeBySlug('coo');
       const { wrapped } = sanitizeUntrustedContent(combinedInstruction, 'ceo_command');
       try {
@@ -285,6 +417,7 @@ export class CommandService {
           .digest('hex')
           .slice(0, 64);
 
+        const ghCtx = this.extractGithubContext(combinedInstruction);
         const task = await this.taskRepo.save({
           projectId: project.id,
           departmentId: dept.id,
@@ -292,10 +425,20 @@ export class CommandService {
           title: spec.title.slice(0, 200),
           description: spec.description,
           taskType: spec.taskType || 'general',
-          priority: Math.min(100, Math.max(1, spec.priority || 50)),
+          priority: this.normalizePriorityNumber(spec.priority),
           status,
           idempotencyKey,
-          inputPayload: { projectTitle: derivedTitle, instruction: combinedInstruction },
+          inputPayload: {
+            projectTitle: derivedTitle,
+            instruction: combinedInstruction,
+            ...(ghCtx.owner ? { githubOwner: ghCtx.owner } : {}),
+            ...(ghCtx.repoName ? { githubRepoName: ghCtx.repoName } : {}),
+            branchName: `codynex/${derivedTitle
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-|-$/g, '')
+              .slice(0, 32) || 'task'}-${project.id.slice(0, 6)}`,
+          },
         });
         createdTasks[spec.key] = task.id;
 

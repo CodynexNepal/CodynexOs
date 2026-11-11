@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { CheckSquare, Eye, RotateCcw, XCircle } from "lucide-react";
+import { CheckSquare, Eye, Plus, RotateCcw, XCircle } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card } from "@/components/ui/Card";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Input, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState, ErrorBanner } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -15,13 +16,47 @@ import { useDomainSocket } from "@/hooks/useDomainSocket";
 import { codynexApi, unwrap } from "@/lib/codynexOs";
 import { toApiError } from "@/lib/axios";
 import { formatDateTime } from "@/lib/utils";
-import type { TaskItem, TaskLogItem } from "@/types/os";
+import type {
+  AiEmployeeItem,
+  DepartmentItem,
+  ProjectItem,
+  TaskItem,
+  TaskLogItem,
+} from "@/types/os";
+
+const STATUS_FILTERS = [
+  "ALL",
+  "QUEUED",
+  "RUNNING",
+  "BLOCKED",
+  "PENDING_APPROVAL",
+  "FAILED",
+  "COMPLETED",
+] as const;
 
 export default function TasksPage() {
-  const { data, loading, error, refetch } = useApiQuery<TaskItem[]>(() => codynexApi.tasks.list());
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const { data, loading, error, refetch } = useApiQuery<TaskItem[]>(
+    () =>
+      codynexApi.tasks.list(statusFilter === "ALL" ? undefined : { status: statusFilter }),
+    [statusFilter]
+  );
+  const projectsQuery = useApiQuery<ProjectItem[]>(() => codynexApi.projects());
+  const deptsQuery = useApiQuery<DepartmentItem[]>(() => codynexApi.departments());
+  const empsQuery = useApiQuery<AiEmployeeItem[]>(() => codynexApi.employees());
+
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [logs, setLogs] = useState<TaskLogItem[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [projectId, setProjectId] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [assignedEmployeeId, setAssignedEmployeeId] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [taskType, setTaskType] = useState("code");
+  const [creating, setCreating] = useState(false);
 
   useDomainSocket(() => {
     refetch();
@@ -58,6 +93,30 @@ export default function TasksPage() {
     }
   };
 
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    setActionError(null);
+    try {
+      await codynexApi.tasks.create({
+        projectId,
+        departmentId,
+        ...(assignedEmployeeId ? { assignedEmployeeId } : {}),
+        title,
+        description,
+        taskType,
+      });
+      setCreateOpen(false);
+      setTitle("");
+      setDescription("");
+      refetch();
+    } catch (err) {
+      setActionError(toApiError(err).message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <DashboardShell
       title="Tasks"
@@ -67,13 +126,37 @@ export default function TasksPage() {
         {error && <ErrorBanner message={error} onRetry={refetch} />}
         {actionError && <ErrorBanner message={actionError} />}
 
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-1.5">
+            {STATUS_FILTERS.map((st) => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setStatusFilter(st)}
+                className={`rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                  statusFilter === st
+                    ? "border-brand-ink bg-brand text-brand-ink"
+                    : "border-surface-border bg-surface text-ink-muted hover:text-ink"
+                }`}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+
+          <Button variant="primary" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            New Task
+          </Button>
+        </div>
+
         {loading ? (
           <Skeleton className="h-72 w-full" />
         ) : !data || data.length === 0 ? (
           <EmptyState
             icon={CheckSquare}
-            title="No tasks in queue"
-            description="Tasks created by the AI COO orchestrator appear here with live execution logs."
+            title="No matching tasks"
+            description="Tasks created by the AI COO orchestrator or manually queued appear here."
           />
         ) : (
           <Card className="overflow-x-auto">
@@ -173,6 +256,96 @@ export default function TasksPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create Manual Task">
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-ink">Project</label>
+            <select
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              required
+              className="h-10 w-full rounded-md border border-surface-border bg-surface px-3 text-sm text-ink"
+            >
+              <option value="">Select project...</option>
+              {(projectsQuery.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-ink">Department</label>
+              <select
+                value={departmentId}
+                onChange={(e) => setDepartmentId(e.target.value)}
+                required
+                className="h-10 w-full rounded-md border border-surface-border bg-surface px-3 text-sm text-ink"
+              >
+                <option value="">Select department...</option>
+                {(deptsQuery.data ?? []).map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-ink">
+                AI Employee (Optional)
+              </label>
+              <select
+                value={assignedEmployeeId}
+                onChange={(e) => setAssignedEmployeeId(e.target.value)}
+                className="h-10 w-full rounded-md border border-surface-border bg-surface px-3 text-sm text-ink"
+              >
+                <option value="">Auto / Unassigned</option>
+                {(empsQuery.data ?? []).map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.roleTitle}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <Input
+                label="Task Title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-ink">Type</label>
+              <select
+                value={taskType}
+                onChange={(e) => setTaskType(e.target.value)}
+                className="h-10 w-full rounded-md border border-surface-border bg-surface px-3 text-sm text-ink"
+              >
+                <option value="code">code</option>
+                <option value="architecture">architecture</option>
+                <option value="qa_verify">qa_verify</option>
+                <option value="research">research</option>
+                <option value="planning">planning</option>
+              </select>
+            </div>
+          </div>
+          <Textarea
+            label="Task Description"
+            rows={3}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            required
+          />
+          <Button type="submit" variant="dark" loading={creating}>
+            Queue Task
+          </Button>
+        </form>
       </Modal>
     </DashboardShell>
   );

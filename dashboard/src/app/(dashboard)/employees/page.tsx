@@ -1,13 +1,18 @@
 "use client";
 
-import { Bot } from "lucide-react";
+import { useState } from "react";
+import { Bot, SlidersHorizontal } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
 import { EmptyState, ErrorBanner } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useApiQuery } from "@/hooks/useApi";
 import { codynexApi } from "@/lib/codynexOs";
+import { toApiError } from "@/lib/axios";
 import { formatNumber } from "@/lib/utils";
 import type { AiEmployeeItem } from "@/types/os";
 
@@ -15,6 +20,44 @@ export default function EmployeesPage() {
   const { data, loading, error, refetch } = useApiQuery<AiEmployeeItem[]>(() =>
     codynexApi.employees()
   );
+
+  const [editing, setEditing] = useState<AiEmployeeItem | null>(null);
+  const [dailyTokenBudget, setDailyTokenBudget] = useState(50000);
+  const [preferredProvider, setPreferredProvider] = useState("gemini");
+  const [preferredModel, setPreferredModel] = useState("gemini-3.8-flash");
+  const [isActive, setIsActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  const openConfig = (emp: AiEmployeeItem) => {
+    setEditing(emp);
+    setDailyTokenBudget(emp.dailyTokenBudget);
+    setPreferredProvider(emp.preferredProvider);
+    setPreferredModel(emp.preferredModel);
+    setIsActive(emp.isActive);
+    setSaveErr(null);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editing) return;
+    setSaving(true);
+    setSaveErr(null);
+    try {
+      await codynexApi.updateEmployee(editing.id, {
+        dailyTokenBudget: Number(dailyTokenBudget),
+        preferredProvider,
+        preferredModel,
+        isActive,
+      });
+      setEditing(null);
+      refetch();
+    } catch (err) {
+      setSaveErr(toApiError(err).message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <DashboardShell
@@ -46,9 +89,15 @@ export default function EmployeesPage() {
                       {emp.department?.name ?? "Department"} · slug: <code>{emp.slug}</code>
                     </p>
                   </div>
-                  <Badge tone={emp.isActive ? "green" : "gray"}>
-                    {emp.isActive ? "Active" : "Paused"}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={emp.isActive ? "green" : "gray"}>
+                      {emp.isActive ? "Active" : "Paused"}
+                    </Badge>
+                    <Button variant="outline" size="sm" onClick={() => openConfig(emp)}>
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                      Configure
+                    </Button>
+                  </div>
                 </div>
 
                 <p className="mt-3 text-[13px] leading-relaxed text-ink-muted">
@@ -77,6 +126,54 @@ export default function EmployeesPage() {
           </div>
         )}
       </div>
+
+      <Modal
+        open={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        title={editing ? `Configure ${editing.roleTitle}` : "Configure Employee"}
+      >
+        <form onSubmit={handleSave} className="space-y-4">
+          {saveErr && <ErrorBanner message={saveErr} />}
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-ink">
+              Preferred Free Provider
+            </label>
+            <select
+              value={preferredProvider}
+              onChange={(e) => setPreferredProvider(e.target.value)}
+              className="h-10 w-full rounded-md border border-surface-border bg-surface px-3 text-sm text-ink"
+            >
+              <option value="gemini">gemini (Free Tier)</option>
+              <option value="groq">groq (Free Tier)</option>
+            </select>
+          </div>
+          <Input
+            label="Preferred Model"
+            value={preferredModel}
+            onChange={(e) => setPreferredModel(e.target.value)}
+            required
+          />
+          <Input
+            label="Daily Token Budget"
+            type="number"
+            min={1000}
+            value={dailyTokenBudget}
+            onChange={(e) => setDailyTokenBudget(Number(e.target.value))}
+            required
+          />
+          <label className="flex items-center gap-2 text-xs font-medium text-ink">
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+            />
+            Employee Active (allow task dispatch)
+          </label>
+          <Button type="submit" variant="dark" loading={saving}>
+            Save Configuration
+          </Button>
+        </form>
+      </Modal>
     </DashboardShell>
   );
 }

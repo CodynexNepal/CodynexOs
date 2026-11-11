@@ -11,7 +11,9 @@ const isTsNode =
 
 export const psqlDbConfig: DataSourceOptions = {
   type: 'postgres',
-  url: databaseUrl,
+  url: databaseUrl.includes('sslmode=require') && !databaseUrl.includes('uselibpqcompat=')
+    ? `${databaseUrl}${databaseUrl.includes('?') ? '&' : '?'}uselibpqcompat=true`
+    : databaseUrl,
   synchronize: false,
   logging: !isProduction && process.env.NODE_ENV !== 'test' ? ['error', 'warn'] : ['error'],
   entities: [

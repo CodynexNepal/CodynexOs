@@ -138,6 +138,107 @@ export class DomainController {
     }
   };
 
+  importOrgRepos = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const owner = getRequiredParam(req, 'owner');
+      const data = await this.engService.importOwnerRepos(owner, req.user!.userId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  createGithubRepo = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.engService.createGithubRepo({
+        name: req.body.name,
+        description: req.body.description,
+        owner: req.body.owner,
+        isPrivate: Boolean(req.body.isPrivate),
+        actorId: req.user!.userId,
+      });
+      res.status(STATUS_CODE.CREATED).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  cloneOrPullWorkspace = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.engService.cloneOrPullWorkspace(id, req.user!.userId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  listWorkspaceFiles = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const subPath = typeof req.query.path === 'string' ? req.query.path : '';
+      const data = await this.engService.listWorkspaceFiles(id, subPath);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  readWorkspaceFile = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const filePath = typeof req.query.path === 'string' ? req.query.path : '';
+      const data = await this.engService.readWorkspaceFile(id, filePath);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  writeWorkspaceFiles = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.engService.writeWorkspaceFiles(
+        id,
+        req.body.branchName,
+        req.body.files ?? [],
+        req.user!.userId,
+      );
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  runWorkspaceChecks = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const taskId = typeof req.body?.taskId === 'string' ? req.body.taskId : undefined;
+      const data = await this.engService.runWorkspaceChecks(id, taskId, req.user!.userId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  commitPushWorkspace = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.engService.commitPushAndOpenPr({
+        repoId: id,
+        branchName: req.body.branchName,
+        title: req.body.title,
+        body: req.body.body,
+        commitMessage: req.body.commitMessage,
+        taskId: req.body.taskId,
+        actorId: req.user!.userId,
+      });
+      res.status(STATUS_CODE.CREATED).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   listPullRequests = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.engService.listPullRequests();

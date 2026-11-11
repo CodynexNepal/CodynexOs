@@ -24,6 +24,10 @@ export class EngineeringRepository {
     return this.repoTable.findOne({ where: { id } });
   }
 
+  findRepoByOwnerName(owner: string, name: string) {
+    return this.repoTable.findOne({ where: { owner, name } });
+  }
+
   saveRepo(data: Partial<GithubRepositoryEntity>) {
     return this.repoTable.save(this.repoTable.create(data));
   }

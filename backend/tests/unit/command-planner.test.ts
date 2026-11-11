@@ -97,4 +97,55 @@ describe('AI COO CommandService planning & approval gating', () => {
     expect(savedApprovals).toHaveLength(1);
     expect(savedApprovals[0]!.actionType).toBe('OUTREACH_CAMPAIGN_SEND');
   });
+
+  it('normalizes AI string priorities to integers and ignores stop-words in repo names', async () => {
+    const savedTasks: Array<Record<string, unknown>> = [];
+    const service = new CommandService(
+      { save: vi.fn().mockImplementation(async (p) => ({ id: 'proj-2', ...p })) } as any,
+      {
+        save: vi.fn().mockImplementation(async (t) => {
+          const created = { id: `task-${savedTasks.length + 1}`, ...t };
+          savedTasks.push(created);
+          return created;
+        }),
+        addDependency: vi.fn(),
+      } as any,
+      {
+        findDepartmentBySlug: vi.fn().mockResolvedValue({ id: 'd-eng', slug: 'engineering' }),
+        findEmployeeBySlug: vi.fn().mockResolvedValue({ id: 'emp-1', slug: 'backend_lead' }),
+      } as any,
+      { searchMemory: vi.fn().mockResolvedValue([]), saveMemory: vi.fn() } as any,
+      { saveApproval: vi.fn() } as any,
+      {
+        complete: vi.fn().mockResolvedValue({
+          content: JSON.stringify({
+            tasks: [
+              {
+                key: 'api',
+                title: 'Integrate Endpoints',
+                description: 'Integrate endpoints',
+                departmentSlug: 'engineering',
+                employeeSlug: 'backend_lead',
+                taskType: 'development',
+                priority: 'HIGH',
+                dependsOnKeys: [],
+                requiresApproval: false,
+              },
+            ],
+          }),
+        }),
+      } as any,
+      { notifyUser: vi.fn() } as any,
+      { log: vi.fn() } as any,
+    );
+
+    await service.issueCommand({
+      userId: 'ceo-1',
+      instruction: 'Integrate all endpoints on hostel ghar project under codynexNepal.',
+    });
+
+    expect(savedTasks).toHaveLength(1);
+    expect(savedTasks[0]!.priority).toBe(80);
+    expect((savedTasks[0]!.inputPayload as any).githubRepoName).toBeUndefined();
+  });
 });

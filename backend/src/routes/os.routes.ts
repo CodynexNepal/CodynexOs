@@ -31,6 +31,12 @@ export function createOsRouter(): Router {
   router.get('/overview', osController.overview);
   router.get('/departments', osController.departments);
   router.get('/employees', osController.employees);
+  router.patch(
+    '/employees/:id',
+    requireRoles(UserRole.CEO, UserRole.ADMIN),
+    requireParam('id', { uuid: true }),
+    osController.updateEmployee,
+  );
 
   router.post(
     '/command',
@@ -113,6 +119,51 @@ export function createOsRouter(): Router {
     requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
     requireParam('id', { uuid: true }),
     domainController.createBranchPr,
+  );
+  router.post(
+    '/github/orgs/:owner/import',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('owner'),
+    domainController.importOrgRepos,
+  );
+  router.post(
+    '/github/repos/create',
+    requireRoles(UserRole.CEO, UserRole.ADMIN),
+    domainController.createGithubRepo,
+  );
+  router.post(
+    '/github/repos/:id/workspace/sync',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.cloneOrPullWorkspace,
+  );
+  router.get(
+    '/github/repos/:id/workspace/files',
+    requireParam('id', { uuid: true }),
+    domainController.listWorkspaceFiles,
+  );
+  router.get(
+    '/github/repos/:id/workspace/file',
+    requireParam('id', { uuid: true }),
+    domainController.readWorkspaceFile,
+  );
+  router.post(
+    '/github/repos/:id/workspace/files',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.writeWorkspaceFiles,
+  );
+  router.post(
+    '/github/repos/:id/workspace/checks',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.runWorkspaceChecks,
+  );
+  router.post(
+    '/github/repos/:id/workspace/push-pr',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.commitPushWorkspace,
   );
   router.get('/github/pull-requests', domainController.listPullRequests);
 

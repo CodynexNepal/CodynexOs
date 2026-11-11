@@ -30,6 +30,15 @@ export const codynexApi = {
   overview: () => api.get<{ success: boolean; data: OverviewResponse }>("/overview"),
   departments: () => api.get<{ success: boolean; data: DepartmentItem[] }>("/departments"),
   employees: () => api.get<{ success: boolean; data: AiEmployeeItem[] }>("/employees"),
+  updateEmployee: (
+    id: string,
+    body: {
+      isActive?: boolean;
+      dailyTokenBudget?: number;
+      preferredProvider?: string;
+      preferredModel?: string;
+    }
+  ) => api.patch<{ success: boolean; data: AiEmployeeItem }>(`/employees/${id}`, body),
   command: {
     issue: (body: {
       instruction: string;
@@ -42,6 +51,15 @@ export const codynexApi = {
   tasks: {
     list: (params?: { projectId?: string; status?: string }) =>
       api.get<{ success: boolean; data: TaskItem[] }>("/tasks", { params }),
+    create: (body: {
+      projectId: string;
+      departmentId: string;
+      assignedEmployeeId?: string;
+      title: string;
+      description: string;
+      taskType: string;
+      priority?: number;
+    }) => api.post<{ success: boolean; data: TaskItem }>("/tasks", body),
     logs: (id: string) => api.get<{ success: boolean; data: TaskLogItem[] }>(`/tasks/${id}/logs`),
     retry: (id: string) => api.post(`/tasks/${id}/retry`),
     cancel: (id: string) => api.post(`/tasks/${id}/cancel`),
@@ -70,12 +88,33 @@ export const codynexApi = {
       defaultBranch?: string;
       isWriteAuthorized?: boolean;
     }) => api.post("/github/repos", body),
+    importOrg: (owner: string) => api.post(`/github/orgs/${encodeURIComponent(owner)}/import`),
+    createRepo: (body: {
+      name: string;
+      description?: string;
+      owner?: string;
+      isPrivate?: boolean;
+    }) => api.post("/github/repos/create", body),
     syncRepo: (id: string) => api.post(`/github/repos/${id}/sync`),
     analyzeRepo: (id: string) => api.get(`/github/repos/${id}/analyze`),
     createBranchPr: (
       id: string,
       body: { branchName: string; title: string; body?: string }
     ) => api.post(`/github/repos/${id}/branch-pr`, body),
+    workspaceSync: (id: string) => api.post(`/github/repos/${id}/workspace/sync`),
+    workspaceFiles: (id: string, path = "") =>
+      api.get(`/github/repos/${id}/workspace/files`, { params: { path } }),
+    workspaceReadFile: (id: string, path: string) =>
+      api.get(`/github/repos/${id}/workspace/file`, { params: { path } }),
+    workspaceWriteFiles: (
+      id: string,
+      body: { branchName: string; files: Array<{ path: string; content: string }> }
+    ) => api.post(`/github/repos/${id}/workspace/files`, body),
+    workspaceRunChecks: (id: string) => api.post(`/github/repos/${id}/workspace/checks`, {}),
+    workspacePushPr: (
+      id: string,
+      body: { branchName: string; title: string; commitMessage?: string; body?: string }
+    ) => api.post(`/github/repos/${id}/workspace/push-pr`, body),
     pullRequests: () => api.get("/github/pull-requests"),
   },
   qa: {

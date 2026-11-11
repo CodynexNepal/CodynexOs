@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 logs/
+workspaces/
 .env
 .env.local
 *.tsbuildinfo

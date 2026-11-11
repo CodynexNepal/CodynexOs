@@ -56,6 +56,42 @@ export class OsController {
     }
   };
 
+  updateEmployee = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const existing = await this.orgRepo.findEmployeeById(id);
+      if (!existing) throw ApiError.notFound('AI employee not found.');
+
+      const patch: Record<string, unknown> = {};
+      if (typeof req.body.isActive === 'boolean') patch.isActive = req.body.isActive;
+      if (typeof req.body.dailyTokenBudget === 'number' && req.body.dailyTokenBudget >= 1000) {
+        patch.dailyTokenBudget = Math.floor(req.body.dailyTokenBudget);
+      }
+      if (typeof req.body.preferredProvider === 'string' && req.body.preferredProvider.trim()) {
+        patch.preferredProvider = req.body.preferredProvider.trim();
+      }
+      if (typeof req.body.preferredModel === 'string' && req.body.preferredModel.trim()) {
+        patch.preferredModel = req.body.preferredModel.trim();
+      }
+
+      await this.orgRepo.updateEmployee(id, patch);
+      const updated = await this.orgRepo.findEmployeeById(id);
+
+      await this.auditService.log({
+        actorType: 'USER',
+        actorId: req.user!.userId,
+        action: 'AI_EMPLOYEE_UPDATED',
+        resourceType: 'ai_employee',
+        resourceId: id,
+        metadata: patch,
+      });
+
+      res.status(STATUS_CODE.OK).json({ success: true, data: updated });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   issueCommand = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.commandService.issueCommand({
