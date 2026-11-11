@@ -1,0 +1,17 @@
+name: CodyNex OS Cloud Worker Heartbeat
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.CODYNEX_API_URL != '' && secrets.WORKER_TICK_SECRET != '' }}
+    steps:
+      - name: Trigger durable PostgreSQL task tick
+        run: |
+          curl --fail --silent --show-error -X POST \
+            -H "X-Worker-Secret: ${{ secrets.WORKER_TICK_SECRET }}" \
+            "${{ secrets.CODYNEX_API_URL }}/api/v1/codynex/workers/tick"

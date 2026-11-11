@@ -1,0 +1,85 @@
+export enum UserRole {
+  CEO = 'CEO',
+  ADMIN = 'ADMIN',
+  OPERATOR = 'OPERATOR',
+  VIEWER = 'VIEWER',
+}
+
+export enum ProjectStatus {
+  PLANNING = 'PLANNING',
+  AWAITING_CLARIFICATION = 'AWAITING_CLARIFICATION',
+  PENDING_APPROVAL = 'PENDING_APPROVAL',
+  ACTIVE = 'ACTIVE',
+  PAUSED = 'PAUSED',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum ProjectPriority {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  CRITICAL = 'CRITICAL',
+}
+
+export enum TaskStatus {
+  DRAFT = 'DRAFT',
+  PENDING_APPROVAL = 'PENDING_APPROVAL',
+  QUEUED = 'QUEUED',
+  RUNNING = 'RUNNING',
+  BLOCKED = 'BLOCKED',
+  UNDER_REVIEW = 'UNDER_REVIEW',
+  FAILED = 'FAILED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum ApprovalStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  EXPIRED = 'EXPIRED',
+}
+
+export enum AiProviderName {
+  GEMINI = 'gemini',
+  GROQ = 'groq',
+  OLLAMA = 'ollama',
+  OPENAI = 'openai',
+}
+
+export enum AiUsageStatus {
+  SUCCESS = 'SUCCESS',
+  RATE_LIMITED = 'RATE_LIMITED',
+  QUOTA_EXHAUSTED = 'QUOTA_EXHAUSTED',
+  ERROR = 'ERROR',
+}
+
+export enum MemoryCategory {
+  INSTRUCTION = 'INSTRUCTION',
+  REQUIREMENT = 'REQUIREMENT',
+  TECH_DECISION = 'TECH_DECISION',
+  ARCHITECTURE = 'ARCHITECTURE',
+  LESSON_LEARNED = 'LESSON_LEARNED',
+  FEEDBACK = 'FEEDBACK',
+  STRATEGY = 'STRATEGY',
+}
+
+export enum QaVerdict {
+  PASSED = 'PASSED',
+  FAILED = 'FAILED',
+  BLOCKED = 'BLOCKED',
+}
+
+export enum LeadStage {
+  NEW = 'NEW',
+  QUALIFIED = 'QUALIFIED',
+  OUTREACH_DRAFTED = 'OUTREACH_DRAFTED',
+  CONTACTED = 'CONTACTED',
+  REPLIED = 'REPLIED',
+  DEMO_SCHEDULED = 'DEMO_SCHEDULED',
+  WON = 'WON',
+  LOST = 'LOST',
+  OPTED_OUT = 'OPTED_OUT',
+}

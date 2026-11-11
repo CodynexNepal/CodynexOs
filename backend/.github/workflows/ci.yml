@@ -1,0 +1,33 @@
+name: CodyNex OS Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci || npm install
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Run unit & integration tests
+        env:
+          NODE_ENV: test
+          ACCESS_TOKEN_SECRET: ci-test-access-secret-must-be-32-chars
+          REFRESH_TOKEN_SECRET: ci-test-refresh-secret-must-be-32-chars
+          ENCRYPTION_KEY: ci-test-encryption-key-must-be-32-bytes
+          WORKER_TICK_SECRET: ci-test-worker-secret
+        run: npm test
+      - run: npm run build

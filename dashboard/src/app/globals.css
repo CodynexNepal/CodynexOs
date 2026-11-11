@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --surface: #ffffff;
+  --surface-muted: #f7f7f5;
+  --surface-elevated: #ffffff;
+  --surface-border: #e4e4e0;
+  --ink: #0e0f0c;
+  --ink-muted: #5c6159;
+  --brand: #c3ff7d;
+  --brand-ink: #0e0f0c;
+}
+
+.dark {
+  --surface: #141814;
+  --surface-muted: #0d100d;
+  --surface-elevated: #1b211b;
+  --surface-border: #262e26;
+  --ink: #f2f4f0;
+  --ink-muted: #9aa396;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--surface-muted);
+  color: var(--ink);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #c3ff7d;
+  color: #0e0f0c;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-scroll {
+  scrollbar-gutter: stable;
+}
+
+.sidebar-nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+:focus-visible {
+  outline: 2px solid #9fe870;
+  outline-offset: 2px;
+}
