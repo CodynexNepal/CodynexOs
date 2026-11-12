@@ -129,12 +129,21 @@ export const codynexApi = {
     }) => api.post("/qa/reports", body),
   },
   marketing: {
-    campaigns: () => api.get("/marketing/campaigns"),
-    createCampaign: (body: { name: string; channel: string; targetAudience?: string }) =>
-      api.post("/marketing/campaigns", body),
+    campaigns: (businessId?: string) =>
+      api.get("/marketing/campaigns", { params: businessId ? { businessId } : undefined }),
+    createCampaign: (body: {
+      name: string;
+      channel: string;
+      targetAudience?: string;
+      businessId?: string;
+      emailAccountId?: string;
+    }) => api.post("/marketing/campaigns", body),
   },
   crm: {
-    leads: (stage?: string) => api.get("/crm/leads", { params: { stage } }),
+    leads: (stage?: string, businessId?: string) =>
+      api.get("/crm/leads", {
+        params: { ...(stage ? { stage } : {}), ...(businessId ? { businessId } : {}) },
+      }),
     upsertLead: (body: {
       businessName: string;
       contactName?: string;
@@ -142,10 +151,22 @@ export const codynexApi = {
       phone?: string;
       city?: string;
       website?: string;
+      businessId?: string;
     }) => api.post("/crm/leads", body),
     optOut: (id: string) => api.post(`/crm/leads/${id}/opt-out`),
-    draftOutreach: (id: string, body: { subject: string; body: string; channel?: string }) =>
-      api.post(`/crm/leads/${id}/outreach`, body),
+    draftOutreach: (
+      id: string,
+      body: {
+        subject: string;
+        body: string;
+        channel?: string;
+        businessId?: string;
+        emailAccountId?: string;
+      }
+    ) => api.post(`/crm/leads/${id}/outreach`, body),
+    approveInteraction: (id: string) => api.post(`/crm/interactions/${id}/approve`),
+    sendInteraction: (id: string, body?: { emailAccountId?: string }) =>
+      api.post(`/crm/interactions/${id}/send`, body ?? {}),
     updateStage: (id: string, body: { stage: string; nextFollowUpAt?: string }) =>
       api.patch(`/crm/leads/${id}/stage`, body),
     interactions: () => api.get("/crm/interactions"),
@@ -153,6 +174,66 @@ export const codynexApi = {
       interactionId: string,
       classification: "INTERESTED" | "NOT_INTERESTED" | "OPT_OUT" | "QUESTION" | "DEMO_REQUEST"
     ) => api.post(`/crm/interactions/${interactionId}/classify`, { classification }),
+  },
+  businesses: {
+    list: () => api.get("/businesses"),
+    create: (body: {
+      name: string;
+      slug?: string;
+      domain?: string;
+      industry?: string;
+      description?: string;
+      defaultGithubOwner?: string;
+    }) => api.post("/businesses", body),
+    update: (
+      id: string,
+      body: {
+        name?: string;
+        domain?: string;
+        industry?: string;
+        description?: string;
+        defaultGithubOwner?: string;
+        isActive?: boolean;
+      }
+    ) => api.patch(`/businesses/${id}`, body),
+  },
+  emailAccounts: {
+    list: (businessId?: string) =>
+      api.get("/email-accounts", { params: businessId ? { businessId } : undefined }),
+    create: (body: {
+      businessId?: string;
+      label: string;
+      provider?: "GMAIL" | "SMTP";
+      fromName: string;
+      fromEmail: string;
+      smtpHost?: string;
+      smtpPort?: number;
+      smtpSecure?: boolean;
+      smtpUser?: string;
+      smtpPass: string;
+      dailySendLimit?: number;
+      isDefault?: boolean;
+    }) => api.post("/email-accounts", body),
+    update: (
+      id: string,
+      body: {
+        businessId?: string | null;
+        label?: string;
+        fromName?: string;
+        fromEmail?: string;
+        smtpHost?: string;
+        smtpPort?: number;
+        smtpSecure?: boolean;
+        smtpUser?: string;
+        smtpPass?: string;
+        dailySendLimit?: number;
+        isDefault?: boolean;
+        isActive?: boolean;
+      }
+    ) => api.patch(`/email-accounts/${id}`, body),
+    delete: (id: string) => api.delete(`/email-accounts/${id}`),
+    verify: (id: string, testRecipientEmail?: string) =>
+      api.post(`/email-accounts/${id}/verify`, testRecipientEmail ? { testRecipientEmail } : {}),
   },
   aiUsage: {
     summary: () => api.get("/ai-usage"),

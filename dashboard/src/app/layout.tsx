@@ -7,6 +7,9 @@ import { ThemeProvider } from "@/hooks/useTheme";
 export const metadata: Metadata = {
   title: "CodyNex OS — Autonomous Company Operating System",
   description: "CEO Command Center for CodyNex OS",
+  icons: {
+    icon: "/codynexos_logo.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

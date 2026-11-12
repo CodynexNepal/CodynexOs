@@ -4,9 +4,13 @@ import { createSmtpTransporter } from '../configs/smtp.config';
 import { socketServer } from '../socket/socket.server';
 import { logger } from '../utils/logger.util';
 import { resolveRuntimeSecret } from './runtime-secrets.service';
+import type { BusinessEmailService } from './business-email.service';
 
 export class NotificationService {
-  constructor(private readonly governanceRepo: GovernanceRepository) {}
+  constructor(
+    private readonly governanceRepo: GovernanceRepository,
+    private readonly businessEmailService?: BusinessEmailService,
+  ) {}
 
   async notifyUser(params: {
     userId: string;
@@ -16,6 +20,8 @@ export class NotificationService {
     message: string;
     linkUrl?: string;
     sendExternal?: boolean;
+    businessId?: string;
+    emailAccountId?: string;
   }) {
     const channels: string[] = ['DASHBOARD'];
 
@@ -41,16 +47,29 @@ export class NotificationService {
         }
       }
 
-      const transporter = createSmtpTransporter();
-      if (transporter && dotEnvConfig.CEO_EMAIL) {
+      if (dotEnvConfig.CEO_EMAIL) {
         try {
-          await transporter.sendMail({
-            from: dotEnvConfig.SMTP_FROM,
-            to: dotEnvConfig.CEO_EMAIL,
-            subject: `[CodyNex OS] ${params.title}`,
-            text: `${params.title}\n\n${params.message}`,
-          });
-          channels.push('EMAIL');
+          if (this.businessEmailService) {
+            await this.businessEmailService.sendEmail({
+              businessId: params.businessId,
+              emailAccountId: params.emailAccountId,
+              to: dotEnvConfig.CEO_EMAIL,
+              subject: `[CodyNex OS] ${params.title}`,
+              text: `${params.title}\n\n${params.message}`,
+            });
+            channels.push('EMAIL');
+          } else {
+            const transporter = createSmtpTransporter();
+            if (transporter) {
+              await transporter.sendMail({
+                from: dotEnvConfig.SMTP_FROM,
+                to: dotEnvConfig.CEO_EMAIL,
+                subject: `[CodyNex OS] ${params.title}`,
+                text: `${params.title}\n\n${params.message}`,
+              });
+              channels.push('EMAIL');
+            }
+          }
         } catch (err) {
           logger.warn('Email notification failed', {
             error: err instanceof Error ? err.message : String(err),

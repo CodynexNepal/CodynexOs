@@ -8,6 +8,12 @@ export class CrmInteractionEntity {
   @Column({ name: 'lead_id', type: 'uuid' })
   leadId!: string;
 
+  @Column({ name: 'business_id', type: 'uuid', nullable: true })
+  businessId!: string | null;
+
+  @Column({ name: 'email_account_id', type: 'uuid', nullable: true })
+  emailAccountId!: string | null;
+
   @Column({ type: 'varchar', length: 16 })
   direction!: 'OUTBOUND' | 'INBOUND' | 'NOTE';
 

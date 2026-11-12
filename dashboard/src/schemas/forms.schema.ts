@@ -45,6 +45,8 @@ export const campaignSchema = yup.object({
   name: yup.string().required("Campaign name is required").max(200),
   channel: yup.string().oneOf(["EMAIL", "SEO", "CONTENT", "SOCIAL"]).required(),
   targetAudience: yup.string().optional(),
+  businessId: yup.string().optional(),
+  emailAccountId: yup.string().optional(),
 });
 
 export const leadSchema = yup.object({
@@ -54,6 +56,7 @@ export const leadSchema = yup.object({
   phone: yup.string().optional(),
   city: yup.string().optional(),
   website: yup.string().optional(),
+  businessId: yup.string().optional(),
 });
 
 export const budgetSchema = yup.object({

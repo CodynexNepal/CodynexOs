@@ -6,6 +6,9 @@ export class GithubRepositoryEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Column({ name: 'business_id', type: 'uuid', nullable: true })
+  businessId!: string | null;
+
   @Column({ type: 'varchar', length: 100 })
   owner!: string;
 

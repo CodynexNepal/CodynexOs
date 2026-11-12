@@ -15,6 +15,9 @@ export class ProjectEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Column({ name: 'business_id', type: 'uuid', nullable: true })
+  businessId!: string | null;
+
   @Column({ type: 'varchar', length: 200 })
   title!: string;
 

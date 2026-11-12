@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState, ErrorBanner } from "@/components/ui/EmptyState";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { TableSkeleton } from "@/components/ui/Skeleton";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { StructuredReportView } from "@/components/domain/StructuredReportView";
 import { useApiQuery } from "@/hooks/useApi";
 import { useDomainSocket } from "@/hooks/useDomainSocket";
@@ -41,6 +42,7 @@ export default function TasksPage() {
       codynexApi.tasks.list(statusFilter === "ALL" ? undefined : { status: statusFilter }),
     [statusFilter]
   );
+  const pagination = usePagination(data ?? [], 15);
   const projectsQuery = useApiQuery<ProjectItem[]>(() => codynexApi.projects());
   const deptsQuery = useApiQuery<DepartmentItem[]>(() => codynexApi.departments());
   const empsQuery = useApiQuery<AiEmployeeItem[]>(() => codynexApi.employees());
@@ -151,7 +153,7 @@ export default function TasksPage() {
         </div>
 
         {loading ? (
-          <Skeleton className="h-72 w-full" />
+          <TableSkeleton rows={8} cols={6} />
         ) : !data || data.length === 0 ? (
           <EmptyState
             icon={CheckSquare}
@@ -159,62 +161,71 @@ export default function TasksPage() {
             description="Tasks created by the AI COO orchestrator or manually queued appear here."
           />
         ) : (
-          <Card className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-surface-border bg-surface-muted text-xs uppercase text-ink-muted">
-                <tr>
-                  <th className="px-4 py-3">Task</th>
-                  <th className="px-4 py-3">Department / Agent</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Retries</th>
-                  <th className="px-4 py-3">Created</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-border">
-                {data.map((t) => (
-                  <tr key={t.id} className="hover:bg-surface-muted/50">
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-ink">{t.title}</p>
-                      <p className="line-clamp-1 text-xs text-ink-muted">{t.description}</p>
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      <p className="font-medium text-ink">{t.department?.name ?? "—"}</p>
-                      <p className="text-ink-muted">{t.assignedEmployee?.roleTitle ?? "Unassigned"}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge tone={statusTone(t.status)}>{t.status}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-xs tabular-nums text-ink-muted">
-                      {t.retryCount} / {t.maxRetries}
-                    </td>
-                    <td className="px-4 py-3 text-xs tabular-nums text-ink-muted">
-                      {formatDateTime(t.createdAt)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1.5">
-                        <Button variant="outline" size="sm" onClick={() => openLogs(t)}>
-                          <Eye className="h-3.5 w-3.5" />
-                          Logs
-                        </Button>
-                        {["FAILED", "BLOCKED", "CANCELLED"].includes(t.status) && (
-                          <Button variant="outline" size="sm" onClick={() => handleRetry(t.id)}>
-                            <RotateCcw className="h-3.5 w-3.5" />
-                            Retry
-                          </Button>
-                        )}
-                        {["QUEUED", "PENDING_APPROVAL", "BLOCKED"].includes(t.status) && (
-                          <Button variant="ghost" size="sm" onClick={() => handleCancel(t.id)}>
-                            <XCircle className="h-3.5 w-3.5 text-red-600" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
+          <>
+            <Card className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-surface-border bg-surface-muted text-xs uppercase text-ink-muted">
+                  <tr>
+                    <th className="px-4 py-3">Task</th>
+                    <th className="px-4 py-3">Department / Agent</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Retries</th>
+                    <th className="px-4 py-3">Created</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+                </thead>
+                <tbody className="divide-y divide-surface-border">
+                  {pagination.pageItems.map((t) => (
+                    <tr key={t.id} className="hover:bg-surface-muted/50">
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-ink">{t.title}</p>
+                        <p className="line-clamp-1 text-xs text-ink-muted">{t.description}</p>
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        <p className="font-medium text-ink">{t.department?.name ?? "—"}</p>
+                        <p className="text-ink-muted">{t.assignedEmployee?.roleTitle ?? "Unassigned"}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge tone={statusTone(t.status)}>{t.status}</Badge>
+                      </td>
+                      <td className="px-4 py-3 text-xs tabular-nums text-ink-muted">
+                        {t.retryCount} / {t.maxRetries}
+                      </td>
+                      <td className="px-4 py-3 text-xs tabular-nums text-ink-muted">
+                        {formatDateTime(t.createdAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-1.5">
+                          <Button variant="outline" size="sm" onClick={() => openLogs(t)}>
+                            <Eye className="h-3.5 w-3.5" />
+                            Logs
+                          </Button>
+                          {["FAILED", "BLOCKED", "CANCELLED"].includes(t.status) && (
+                            <Button variant="outline" size="sm" onClick={() => handleRetry(t.id)}>
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Retry
+                            </Button>
+                          )}
+                          {["QUEUED", "PENDING_APPROVAL", "BLOCKED"].includes(t.status) && (
+                            <Button variant="ghost" size="sm" onClick={() => handleCancel(t.id)}>
+                              <XCircle className="h-3.5 w-3.5 text-red-600" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+            <Pagination
+              page={pagination.page}
+              pageSize={pagination.pageSize}
+              totalItems={pagination.totalItems}
+              onPageChange={pagination.setPage}
+              onPageSizeChange={pagination.setPageSize}
+            />
+          </>
         )}
       </div>
 

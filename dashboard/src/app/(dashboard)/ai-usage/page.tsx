@@ -10,6 +10,8 @@ import { Badge, statusTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { EmptyState, ErrorBanner } from "@/components/ui/EmptyState";
+import { StatsGridSkeleton, TableSkeleton } from "@/components/ui/Skeleton";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useApiQuery } from "@/hooks/useApi";
 import { codynexApi, unwrap } from "@/lib/codynexOs";
 import { budgetSchema } from "@/schemas/forms.schema";
@@ -43,7 +45,8 @@ interface AiUsageResponse {
 }
 
 export default function AiUsagePage() {
-  const { data, error, refetch } = useApiQuery<AiUsageResponse>(() => codynexApi.aiUsage.summary());
+  const { data, loading, error, refetch } = useApiQuery<AiUsageResponse>(() => codynexApi.aiUsage.summary());
+  const logsPagination = usePagination(data?.logs ?? [], 15);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [probing, setProbing] = useState(false);
@@ -200,39 +203,53 @@ export default function AiUsagePage() {
           </Card>
         </div>
 
-        <Card className="overflow-x-auto">
-          <CardHeader title="Recent AI Call Ledger" subtitle="Latest 100 provider calls" />
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-surface-border bg-surface-muted uppercase text-ink-muted">
-              <tr>
-                <th className="px-4 py-3">Provider / Model</th>
-                <th className="px-4 py-3">Tokens (In / Out)</th>
-                <th className="px-4 py-3">Cost (USD)</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Timestamp</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-border">
-              {(data?.logs ?? []).map((log) => (
-                <tr key={log.id}>
-                  <td className="px-4 py-2.5 font-semibold text-ink">
-                    {log.provider} / {log.model}
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums text-ink-muted">
-                    {formatNumber(log.inputTokens)} / {formatNumber(log.outputTokens)}
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums text-ink">${log.estimatedCostUsd}</td>
-                  <td className="px-4 py-2.5">
-                    <Badge tone={statusTone(log.status)}>{log.status}</Badge>
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums text-ink-muted">
-                    {formatDateTime(log.createdAt)}
-                  </td>
+        {loading && !data ? (
+          <>
+            <StatsGridSkeleton count={4} />
+            <TableSkeleton rows={6} cols={5} />
+          </>
+        ) : (
+          <Card className="overflow-x-auto">
+            <CardHeader title="Recent AI Call Ledger" subtitle="Latest 100 provider calls" />
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-surface-border bg-surface-muted uppercase text-ink-muted">
+                <tr>
+                  <th className="px-4 py-3">Provider / Model</th>
+                  <th className="px-4 py-3">Tokens (In / Out)</th>
+                  <th className="px-4 py-3">Cost (USD)</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Timestamp</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+              </thead>
+              <tbody className="divide-y divide-surface-border">
+                {logsPagination.pageItems.map((log) => (
+                  <tr key={log.id}>
+                    <td className="px-4 py-2.5 font-semibold text-ink">
+                      {log.provider} / {log.model}
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums text-ink-muted">
+                      {formatNumber(log.inputTokens)} / {formatNumber(log.outputTokens)}
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums text-ink">${log.estimatedCostUsd}</td>
+                    <td className="px-4 py-2.5">
+                      <Badge tone={statusTone(log.status)}>{log.status}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums text-ink-muted">
+                      {formatDateTime(log.createdAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        )}
+        <Pagination
+          page={logsPagination.page}
+          pageSize={logsPagination.pageSize}
+          totalItems={logsPagination.totalItems}
+          onPageChange={logsPagination.setPage}
+          onPageSizeChange={logsPagination.setPageSize}
+        />
       </div>
     </DashboardShell>
   );

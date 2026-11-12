@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
+import { CodyNexLogoMark } from "@/components/ui/CodyNexLogo";
 
 interface LoginFormValues {
   email: string;
@@ -40,9 +41,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-surface-muted px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-brand text-sm font-extrabold text-brand-ink">
-            CN
-          </div>
+          <CodyNexLogoMark className="h-10 w-10" />
           <div>
             <h1 className="text-xl font-bold text-ink">CodyNex OS</h1>
             <p className="text-xs text-ink-muted">CEO Command Center Authentication</p>

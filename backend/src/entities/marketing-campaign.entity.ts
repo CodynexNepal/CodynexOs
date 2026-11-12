@@ -14,6 +14,12 @@ export class MarketingCampaignEntity {
   @Column({ name: 'project_id', type: 'uuid', nullable: true })
   projectId!: string | null;
 
+  @Column({ name: 'business_id', type: 'uuid', nullable: true })
+  businessId!: string | null;
+
+  @Column({ name: 'email_account_id', type: 'uuid', nullable: true })
+  emailAccountId!: string | null;
+
   @Column({ type: 'varchar', length: 200 })
   name!: string;
 

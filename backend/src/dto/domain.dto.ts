@@ -87,6 +87,14 @@ export class CreateCampaignDto {
   @IsOptional()
   @IsString()
   projectId?: string;
+
+  @IsOptional()
+  @IsString()
+  businessId?: string;
+
+  @IsOptional()
+  @IsString()
+  emailAccountId?: string;
 }
 
 export class UpsertLeadDto {
@@ -124,6 +132,10 @@ export class UpsertLeadDto {
   campaignId?: string;
 
   @IsOptional()
+  @IsString()
+  businessId?: string;
+
+  @IsOptional()
   @IsEnum(LeadStage)
   stage?: LeadStage;
 }
@@ -151,4 +163,194 @@ export class UpdateSettingDto {
   @IsOptional()
   @IsBoolean()
   isSecret?: boolean;
+}
+
+export class CreateBusinessDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(160)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  slug?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  domain?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  industry?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  defaultGithubOwner?: string;
+}
+
+export class UpdateBusinessDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(160)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  domain?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  industry?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  defaultGithubOwner?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class CreateEmailAccountDto {
+  @IsOptional()
+  @IsString()
+  businessId?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(160)
+  label!: string;
+
+  @IsOptional()
+  @IsString()
+  provider?: 'GMAIL' | 'SMTP';
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(160)
+  fromName!: string;
+
+  @IsEmail()
+  fromEmail!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  smtpHost?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  smtpPort?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  smtpSecure?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  smtpUser?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  smtpPass!: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  dailySendLimit?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+}
+
+export class UpdateEmailAccountDto {
+  @IsOptional()
+  @IsString()
+  businessId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(160)
+  label?: string;
+
+  @IsOptional()
+  @IsString()
+  provider?: 'GMAIL' | 'SMTP';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  fromName?: string;
+
+  @IsOptional()
+  @IsEmail()
+  fromEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  smtpHost?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  smtpPort?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  smtpSecure?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  smtpUser?: string;
+
+  @IsOptional()
+  @IsString()
+  smtpPass?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  dailySendLimit?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class VerifyEmailAccountDto {
+  @IsOptional()
+  @IsEmail()
+  testRecipientEmail?: string;
+}
+
+export class SendInteractionEmailDto {
+  @IsOptional()
+  @IsString()
+  emailAccountId?: string;
 }

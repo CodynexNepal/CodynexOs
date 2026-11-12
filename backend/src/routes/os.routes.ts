@@ -9,12 +9,18 @@ import { commandRateLimiter } from '../configs/rateLimiter.config';
 import { CreateTaskDto, IssueCommandDto, ReviewApprovalDto } from '../dto/command.dto';
 import {
   ConnectRepoDto,
+  CreateBusinessDto,
   CreateCampaignDto,
+  CreateEmailAccountDto,
   CreateKnowledgeDto,
   CreateMemoryDto,
+  SendInteractionEmailDto,
   UpdateBudgetPolicyDto,
+  UpdateBusinessDto,
+  UpdateEmailAccountDto,
   UpdateSettingDto,
   UpsertLeadDto,
+  VerifyEmailAccountDto,
 } from '../dto/domain.dto';
 import { UserRole } from '../constant/enum.constant';
 
@@ -214,6 +220,67 @@ export function createOsRouter(): Router {
     requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
     requireParam('id', { uuid: true }),
     domainController.classifyReply,
+  );
+  router.post(
+    '/crm/interactions/:id/approve',
+    requireRoles(UserRole.CEO),
+    requireParam('id', { uuid: true }),
+    domainController.approveInteraction,
+  );
+  router.post(
+    '/crm/interactions/:id/send',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    validateDto(SendInteractionEmailDto),
+    domainController.sendInteractionEmail,
+  );
+
+  // Multi-Business & Multi-Email Sender Accounts
+  router.get('/businesses', domainController.listBusinesses);
+  router.post(
+    '/businesses',
+    requireRoles(UserRole.CEO, UserRole.ADMIN),
+    validateDto(CreateBusinessDto),
+    domainController.createBusiness,
+  );
+  router.patch(
+    '/businesses/:id',
+    requireRoles(UserRole.CEO, UserRole.ADMIN),
+    requireParam('id', { uuid: true }),
+    validateDto(UpdateBusinessDto),
+    domainController.updateBusiness,
+  );
+
+  router.get(
+    '/email-accounts',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    domainController.listEmailAccounts,
+  );
+  router.post(
+    '/email-accounts',
+    requireRoles(UserRole.CEO, UserRole.ADMIN),
+    validateDto(CreateEmailAccountDto),
+    domainController.createEmailAccount,
+  );
+  router.patch(
+    '/email-accounts/:id',
+    requireRoles(UserRole.CEO, UserRole.ADMIN),
+    requireParam('id', { uuid: true }),
+    validateDto(UpdateEmailAccountDto),
+    domainController.updateEmailAccount,
+  );
+  router.delete(
+    '/email-accounts/:id',
+    requireRoles(UserRole.CEO, UserRole.ADMIN),
+    requireParam('id', { uuid: true }),
+    domainController.deleteEmailAccount,
+  );
+  router.post(
+    '/email-accounts/:id/verify',
+    requireRoles(UserRole.CEO, UserRole.ADMIN),
+    requireParam('id', { uuid: true }),
+    validateDto(VerifyEmailAccountDto),
+    domainController.verifyEmailAccount,
   );
 
   router.get('/ai-usage', domainController.aiUsage);

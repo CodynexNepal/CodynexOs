@@ -298,6 +298,16 @@ export class OsController {
         }
       }
 
+      const interactionId =
+        typeof approval.payload?.interactionId === 'string' ? approval.payload.interactionId : null;
+      if (interactionId) {
+        const interaction = await this.crmRepo.findInteractionById(interactionId);
+        if (interaction && interaction.approvalStatus !== 'SENT') {
+          interaction.approvalStatus = decision === 'APPROVED' ? 'APPROVED' : 'BLOCKED';
+          await this.crmRepo.saveInteraction(interaction);
+        }
+      }
+
       await this.auditService.log({
         actorType: 'USER',
         actorId: req.user!.userId,

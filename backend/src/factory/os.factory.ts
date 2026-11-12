@@ -6,8 +6,10 @@ import { MemoryRepository } from '../repository/memory.repository';
 import { EngineeringRepository } from '../repository/engineering.repository';
 import { CrmRepository } from '../repository/crm.repository';
 import { GovernanceRepository } from '../repository/governance.repository';
+import { BusinessRepository } from '../repository/business.repository';
 import { ModelRouterService } from '../ai/router/model-router.service';
 import { AuditService } from '../services/audit.service';
+import { BusinessEmailService } from '../services/business-email.service';
 import { NotificationService } from '../services/notification.service';
 import { AuthService } from '../services/auth.service';
 import { CommandService } from '../services/command.service';
@@ -39,10 +41,12 @@ export function getOsContainer(): OsContainer {
   const engRepo = new EngineeringRepository();
   const crmRepo = new CrmRepository();
   const governanceRepo = new GovernanceRepository();
+  const businessRepo = new BusinessRepository();
 
   const modelRouter = new ModelRouterService();
   const auditService = new AuditService(governanceRepo);
-  const notificationService = new NotificationService(governanceRepo);
+  const businessEmailService = new BusinessEmailService(businessRepo, auditService);
+  const notificationService = new NotificationService(governanceRepo, businessEmailService);
   const authService = new AuthService(userRepo, auditService);
   const commandService = new CommandService(
     projectRepo,
@@ -72,7 +76,7 @@ export function getOsContainer(): OsContainer {
     auditService,
     engineeringService,
   );
-  const crmService = new CrmService(crmRepo, governanceRepo, auditService);
+  const crmService = new CrmService(crmRepo, governanceRepo, auditService, businessEmailService);
   const dashboardService = new DashboardService(
     orgRepo,
     projectRepo,
@@ -105,6 +109,7 @@ export function getOsContainer(): OsContainer {
       governanceRepo,
       modelRouter,
       auditService,
+      businessEmailService,
     ),
   };
 

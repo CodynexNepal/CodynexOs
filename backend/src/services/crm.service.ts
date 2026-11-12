@@ -4,6 +4,7 @@ import { ApprovalStatus, LeadStage } from '../constant/enum.constant';
 import { sha256Hex } from '../utils/encryption.util';
 import { ApiError } from '../utils/api-error.util';
 import { AuditService } from './audit.service';
+import type { BusinessEmailService } from './business-email.service';
 
 export function computeDeterministicLeadScore(input: {
   email?: string | null;
@@ -24,14 +25,24 @@ export class CrmService {
     private readonly crmRepo: CrmRepository,
     private readonly governanceRepo: GovernanceRepository,
     private readonly auditService: AuditService,
+    private readonly businessEmailService?: BusinessEmailService,
   ) {}
 
-  listCampaigns() {
-    return this.crmRepo.findCampaigns();
+  listCampaigns(businessId?: string) {
+    return this.crmRepo.findCampaigns().then((rows) =>
+      businessId ? rows.filter((c) => c.businessId === businessId) : rows,
+    );
   }
 
   async createCampaign(
-    data: { name: string; channel: 'EMAIL' | 'SEO' | 'CONTENT' | 'SOCIAL'; targetAudience?: string; projectId?: string },
+    data: {
+      name: string;
+      channel: 'EMAIL' | 'SEO' | 'CONTENT' | 'SOCIAL';
+      targetAudience?: string;
+      projectId?: string;
+      businessId?: string;
+      emailAccountId?: string;
+    },
     actorId: string,
   ) {
     const campaign = await this.crmRepo.saveCampaign({
@@ -39,6 +50,8 @@ export class CrmService {
       channel: data.channel,
       targetAudience: data.targetAudience ?? null,
       projectId: data.projectId ?? null,
+      businessId: data.businessId ?? null,
+      emailAccountId: data.emailAccountId ?? null,
       status: 'PENDING_APPROVAL',
     });
 
@@ -47,7 +60,11 @@ export class CrmService {
       actionType: 'OUTREACH_CAMPAIGN_SEND',
       summary: `Approve marketing campaign: ${campaign.name} (${campaign.channel})`,
       riskAssessment: 'Initial outreach campaigns require CEO approval before sending.',
-      payload: { campaignId: campaign.id },
+      payload: {
+        campaignId: campaign.id,
+        businessId: campaign.businessId,
+        emailAccountId: campaign.emailAccountId,
+      },
       status: ApprovalStatus.PENDING,
     });
 
@@ -62,8 +79,10 @@ export class CrmService {
     return campaign;
   }
 
-  listLeads(stage?: string) {
-    return this.crmRepo.findLeads(stage);
+  listLeads(stage?: string, businessId?: string) {
+    return this.crmRepo.findLeads(stage).then((rows) =>
+      businessId ? rows.filter((l) => l.businessId === businessId) : rows,
+    );
   }
 
   async upsertLead(
@@ -76,11 +95,18 @@ export class CrmService {
       city?: string;
       sourceUrl?: string;
       campaignId?: string;
+      businessId?: string;
       stage?: LeadStage;
     },
     actorId: string,
   ) {
-    const dedupSource = `${data.businessName.toLowerCase().trim()}|${(data.email || data.phone || data.city || '').toLowerCase().trim()}`;
+    let resolvedBusinessId = data.businessId ?? null;
+    if (!resolvedBusinessId && data.campaignId) {
+      const campaign = await this.crmRepo.findCampaignById(data.campaignId);
+      resolvedBusinessId = campaign?.businessId ?? null;
+    }
+
+    const dedupSource = `${resolvedBusinessId ?? 'global'}|${data.businessName.toLowerCase().trim()}|${(data.email || data.phone || data.city || '').toLowerCase().trim()}`;
     const dedupHash = sha256Hex(dedupSource);
     const existing = await this.crmRepo.findLeadByDedupHash(dedupHash);
 
@@ -94,6 +120,7 @@ export class CrmService {
       existing.phone = data.phone ?? existing.phone;
       existing.website = data.website ?? existing.website;
       existing.city = data.city ?? existing.city;
+      if (resolvedBusinessId) existing.businessId = resolvedBusinessId;
       existing.leadScore = Math.max(existing.leadScore, score);
       if (data.stage) existing.stage = data.stage;
       return this.crmRepo.saveLead(existing);
@@ -101,6 +128,7 @@ export class CrmService {
 
     const saved = await this.crmRepo.saveLead({
       campaignId: data.campaignId ?? null,
+      businessId: resolvedBusinessId,
       businessName: data.businessName,
       contactName: data.contactName ?? null,
       email: data.email ?? null,
@@ -144,7 +172,13 @@ export class CrmService {
 
   async draftOutreach(
     leadId: string,
-    params: { subject: string; body: string; channel: string },
+    params: {
+      subject: string;
+      body: string;
+      channel: string;
+      businessId?: string;
+      emailAccountId?: string;
+    },
   ) {
     const lead = await this.crmRepo.findLeadById(leadId);
     if (!lead) throw ApiError.notFound('Lead not found.');
@@ -152,14 +186,127 @@ export class CrmService {
       throw ApiError.badRequest('Cannot draft outbound message for an opted-out lead.');
     }
 
-    return this.crmRepo.saveInteraction({
+    const campaign = lead.campaignId ? await this.crmRepo.findCampaignById(lead.campaignId) : null;
+    const businessId = params.businessId ?? lead.businessId ?? campaign?.businessId ?? null;
+    const emailAccountId = params.emailAccountId ?? campaign?.emailAccountId ?? null;
+
+    const saved = await this.crmRepo.saveInteraction({
       leadId: lead.id,
+      businessId,
+      emailAccountId,
       direction: 'OUTBOUND',
       channel: params.channel || 'EMAIL',
       subject: params.subject,
       body: params.body,
       approvalStatus: 'PENDING_APPROVAL',
     });
+
+    await this.governanceRepo.saveApproval({
+      actionType: 'OUTBOUND_EMAIL_SEND',
+      summary: `Approve outbound email to ${lead.businessName} (${lead.email || 'no email'})`,
+      riskAssessment: 'Outbound prospect emails require CEO approval before sending.',
+      payload: {
+        interactionId: saved.id,
+        leadId: lead.id,
+        businessId,
+        emailAccountId,
+      },
+      status: ApprovalStatus.PENDING,
+    });
+
+    return saved;
+  }
+
+  async approveInteraction(interactionId: string, actorId: string) {
+    const interaction = await this.crmRepo.findInteractionById(interactionId);
+    if (!interaction) throw ApiError.notFound('Interaction not found.');
+    interaction.approvalStatus = 'APPROVED';
+    const saved = await this.crmRepo.saveInteraction(interaction);
+
+    await this.auditService.log({
+      actorType: 'USER',
+      actorId,
+      action: 'CRM_OUTREACH_APPROVED',
+      resourceType: 'crm_interaction',
+      resourceId: interaction.id,
+    });
+    return saved;
+  }
+
+  async sendApprovedInteraction(
+    interactionId: string,
+    actorId: string,
+    emailAccountId?: string,
+  ) {
+    const interaction = await this.crmRepo.findInteractionById(interactionId);
+    if (!interaction) throw ApiError.notFound('Interaction not found.');
+    if (interaction.approvalStatus === 'SENT') {
+      throw ApiError.badRequest('This outreach email has already been sent.');
+    }
+
+    const lead = await this.crmRepo.findLeadById(interaction.leadId);
+    if (!lead) throw ApiError.notFound('Lead not found.');
+    if (lead.isOptedOut) {
+      interaction.approvalStatus = 'BLOCKED';
+      await this.crmRepo.saveInteraction(interaction);
+      throw ApiError.badRequest('Cannot send email to an opted-out lead.');
+    }
+    if (!lead.email) {
+      throw ApiError.badRequest('Lead does not have an email address.');
+    }
+
+    const campaign = lead.campaignId ? await this.crmRepo.findCampaignById(lead.campaignId) : null;
+    const isCampaignApproved = campaign?.status === 'APPROVED' || campaign?.status === 'ACTIVE';
+    if (interaction.approvalStatus !== 'APPROVED' && !isCampaignApproved) {
+      throw ApiError.forbidden(
+        'CEO approval is required before sending outbound CRM emails.',
+      );
+    }
+
+    if (!this.businessEmailService) {
+      throw ApiError.badRequest('BusinessEmailService is not configured.');
+    }
+
+    const resolvedBusinessId =
+      interaction.businessId ?? lead.businessId ?? campaign?.businessId ?? null;
+    const resolvedAccountId =
+      emailAccountId ?? interaction.emailAccountId ?? campaign?.emailAccountId ?? null;
+
+    const dispatch = await this.businessEmailService.sendEmail({
+      businessId: resolvedBusinessId,
+      emailAccountId: resolvedAccountId,
+      to: lead.email,
+      subject: interaction.subject || `Following up — ${lead.businessName}`,
+      text: interaction.body,
+    });
+
+    interaction.businessId = resolvedBusinessId;
+    interaction.emailAccountId = dispatch.emailAccountId ?? resolvedAccountId;
+    interaction.approvalStatus = 'SENT';
+    interaction.sentAt = new Date();
+    const saved = await this.crmRepo.saveInteraction(interaction);
+
+    if (lead.stage === LeadStage.NEW || lead.stage === LeadStage.QUALIFIED) {
+      lead.stage = LeadStage.CONTACTED;
+      await this.crmRepo.saveLead(lead);
+    }
+
+    await this.auditService.log({
+      actorType: 'USER',
+      actorId,
+      action: 'CRM_OUTREACH_SENT',
+      resourceType: 'crm_interaction',
+      resourceId: saved.id,
+      metadata: {
+        to: lead.email,
+        fromEmail: dispatch.fromEmail,
+        emailAccountId: dispatch.emailAccountId,
+        businessId: resolvedBusinessId,
+        messageId: dispatch.messageId,
+      },
+    });
+
+    return { interaction: saved, dispatch };
   }
 
   listInteractions(leadId?: string) {

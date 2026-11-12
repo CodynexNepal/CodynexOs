@@ -140,3 +140,38 @@ export interface OverviewResponse {
     createdAt: string;
   }>;
 }
+
+export interface BusinessItem {
+  id: string;
+  name: string;
+  slug: string;
+  domain: string | null;
+  industry: string | null;
+  description: string | null;
+  defaultGithubOwner: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmailAccountItem {
+  id: string;
+  businessId: string | null;
+  label: string;
+  provider: "GMAIL" | "SMTP";
+  fromName: string;
+  fromEmail: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
+  smtpUser: string;
+  hasPassword: boolean;
+  dailySendLimit: number;
+  sentToday: number;
+  lastResetDate: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+  lastVerifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

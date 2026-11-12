@@ -34,7 +34,7 @@ export function Badge({
 export function statusTone(status: string): string {
   const s = status.toUpperCase();
   if (
-    ["COMPLETED", "PASSED", "APPROVED", "ACTIVE", "CONNECTED", "HEALTHY", "SUCCESS", "WON"].includes(
+    ["COMPLETED", "PASSED", "APPROVED", "ACTIVE", "CONNECTED", "HEALTHY", "SUCCESS", "WON", "SENT"].includes(
       s
     )
   ) {

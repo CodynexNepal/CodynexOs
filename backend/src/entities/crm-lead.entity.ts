@@ -15,6 +15,9 @@ export class CrmLeadEntity {
   @Column({ name: 'campaign_id', type: 'uuid', nullable: true })
   campaignId!: string | null;
 
+  @Column({ name: 'business_id', type: 'uuid', nullable: true })
+  businessId!: string | null;
+
   @Column({ name: 'business_name', type: 'varchar', length: 200 })
   businessName!: string;
 

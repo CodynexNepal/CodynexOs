@@ -6,14 +6,13 @@ import { LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { OS_NAVIGATION, isActivePath } from "@/constants/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
+import { CodyNexLogoMark } from "@/components/ui/CodyNexLogo";
 import { cn, initials } from "@/lib/utils";
 
 export function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <span className="flex items-center gap-2.5 overflow-hidden">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand text-xs font-extrabold tracking-tight text-brand-ink">
-        CN
-      </span>
+      <CodyNexLogoMark className="h-8 w-8" />
       {!collapsed && (
         <span className="whitespace-nowrap">
           <span className="block text-[15px] font-bold leading-tight text-white">CodyNex OS</span>

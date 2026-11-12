@@ -5,6 +5,7 @@ import { CrmService } from '../services/crm.service';
 import { GovernanceRepository } from '../repository/governance.repository';
 import { ModelRouterService } from '../ai/router/model-router.service';
 import { AuditService } from '../services/audit.service';
+import { BusinessEmailService } from '../services/business-email.service';
 import { getRequiredParam } from '../decorators/http.decorator';
 import { STATUS_CODE } from '../constant/statusCode.interface';
 import { MemoryCategory, QaVerdict } from '../constant/enum.constant';
@@ -17,6 +18,7 @@ export class DomainController {
     private readonly governanceRepo: GovernanceRepository,
     private readonly modelRouter: ModelRouterService,
     private readonly auditService: AuditService,
+    private readonly businessEmailService: BusinessEmailService,
   ) {}
 
   listMemory = async (req: Request, res: Response, next: NextFunction) => {
@@ -282,9 +284,10 @@ export class DomainController {
     }
   };
 
-  listCampaigns = async (_req: Request, res: Response, next: NextFunction) => {
+  listCampaigns = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await this.crmService.listCampaigns();
+      const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : undefined;
+      const data = await this.crmService.listCampaigns(businessId);
       res.status(STATUS_CODE.OK).json({ success: true, data });
     } catch (err) {
       next(err);
@@ -303,7 +306,8 @@ export class DomainController {
   listLeads = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const stage = typeof req.query.stage === 'string' ? req.query.stage : undefined;
-      const data = await this.crmService.listLeads(stage);
+      const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : undefined;
+      const data = await this.crmService.listLeads(stage, businessId);
       res.status(STATUS_CODE.OK).json({ success: true, data });
     } catch (err) {
       next(err);
@@ -346,8 +350,121 @@ export class DomainController {
         subject: req.body.subject,
         body: req.body.body,
         channel: req.body.channel ?? 'EMAIL',
+        businessId: req.body.businessId,
+        emailAccountId: req.body.emailAccountId,
       });
       res.status(STATUS_CODE.CREATED).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  approveInteraction = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.crmService.approveInteraction(id, req.user!.userId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  sendInteractionEmail = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const emailAccountId =
+        typeof req.body?.emailAccountId === 'string' ? req.body.emailAccountId : undefined;
+      const data = await this.crmService.sendApprovedInteraction(
+        id,
+        req.user!.userId,
+        emailAccountId,
+      );
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  listBusinesses = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.businessEmailService.listBusinesses();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  createBusiness = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.businessEmailService.createBusiness(req.body, req.user!.userId);
+      res.status(STATUS_CODE.CREATED).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateBusiness = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.businessEmailService.updateBusiness(id, req.body, req.user!.userId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  listEmailAccounts = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : undefined;
+      const data = await this.businessEmailService.listEmailAccounts(businessId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  createEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.businessEmailService.createEmailAccount(req.body, req.user!.userId);
+      res.status(STATUS_CODE.CREATED).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.businessEmailService.updateEmailAccount(id, req.body, req.user!.userId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  deleteEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.businessEmailService.deleteEmailAccount(id, req.user!.userId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  verifyEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const testRecipientEmail =
+        typeof req.body?.testRecipientEmail === 'string'
+          ? req.body.testRecipientEmail
+          : undefined;
+      const data = await this.businessEmailService.verifyEmailAccount(
+        id,
+        testRecipientEmail,
+        req.user!.userId,
+      );
+      res.status(STATUS_CODE.OK).json({ success: true, data });
     } catch (err) {
       next(err);
     }

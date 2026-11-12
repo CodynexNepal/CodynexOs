@@ -6,6 +6,7 @@ import { BudgetPolicyEntity } from '../../entities/budget-policy.entity';
 import { SystemSettingEntity } from '../../entities/system-setting.entity';
 import { CompanyMemoryEntity } from '../../entities/company-memory.entity';
 import { KnowledgeDocumentEntity } from '../../entities/knowledge-document.entity';
+import { BusinessEntity } from '../../entities/business.entity';
 import { AI_EMPLOYEE_SEEDS, DEPARTMENT_SEEDS } from '../../constant/company.constant';
 import { MemoryCategory, UserRole } from '../../constant/enum.constant';
 import { dotEnvConfig } from '../../configs/envConfig';
@@ -197,5 +198,23 @@ export async function runInitialSeed(): Promise<void> {
     for (const sop of sops) {
       await knowledgeRepo.save(knowledgeRepo.create(sop));
     }
+  }
+
+  // 8. Seed default parent business ("CodyNex") if none exist
+  const businessRepo = AppDataSource.getRepository(BusinessEntity);
+  const businessCount = await businessRepo.count();
+  if (businessCount === 0) {
+    await businessRepo.save(
+      businessRepo.create({
+        name: 'CodyNex',
+        slug: 'codynex',
+        domain: 'codynex.com',
+        industry: 'Software & AI Venture Studio',
+        description: 'Parent venture studio operating autonomous software businesses.',
+        defaultGithubOwner: 'CodynexNepal',
+        isActive: true,
+      }),
+    );
+    logger.info('Seeded default CodyNex business');
   }
 }

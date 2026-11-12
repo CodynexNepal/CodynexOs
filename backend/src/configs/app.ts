@@ -7,6 +7,7 @@ import { globalRateLimiter } from './rateLimiter.config';
 import { createRootRoutes } from '../routes/index.routes';
 import { notFoundHandler } from '../middleware/not-found.middleware';
 import { errorHandler } from '../middleware/error-handler.middleware';
+import { compressionMiddleware } from '../middleware/compression.middleware';
 import { metricsHandler, metricsMiddleware } from '../observability/metrics';
 import { AppDataSource } from '../database/database-source';
 
@@ -17,6 +18,7 @@ export const createApp = (): Express => {
   app.use(metricsMiddleware);
   app.use(helmet());
   app.use(cors(corsConfig));
+  app.use(compressionMiddleware());
   app.use(express.json({ limit: '4mb' }));
   app.use(express.urlencoded({ extended: true, limit: '4mb' }));
   app.use(cookieParser());

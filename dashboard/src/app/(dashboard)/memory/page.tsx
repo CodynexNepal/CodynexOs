@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState, ErrorBanner } from "@/components/ui/EmptyState";
+import { CardListSkeleton } from "@/components/ui/Skeleton";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { StructuredReportView } from "@/components/domain/StructuredReportView";
 import { useApiQuery } from "@/hooks/useApi";
 import { codynexApi } from "@/lib/codynexOs";
@@ -36,6 +38,7 @@ export default function MemoryPage() {
     () => codynexApi.memory.list({ q: query || undefined }),
     [query]
   );
+  const pagination = usePagination(data ?? [], 10);
 
   const {
     register,
@@ -98,29 +101,40 @@ export default function MemoryPage() {
           </Button>
         </div>
 
-        {!loading && (!data || data.length === 0) ? (
+        {loading ? (
+          <CardListSkeleton count={4} columns={1} />
+        ) : !data || data.length === 0 ? (
           <EmptyState
             icon={Brain}
             title="No memory entries found"
             description="Agents automatically persist instructions and lessons learned here."
           />
         ) : (
-          <div className="space-y-3">
-            {(data ?? []).map((item) => (
-              <Card key={item.id} className="p-5">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-surface-border pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <Badge tone="blue">{item.category}</Badge>
-                    <h3 className="text-sm font-bold text-ink">{item.title}</h3>
+          <>
+            <div className="space-y-3">
+              {pagination.pageItems.map((item) => (
+                <Card key={item.id} className="p-5">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-surface-border pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <Badge tone="blue">{item.category}</Badge>
+                      <h3 className="text-sm font-bold text-ink">{item.title}</h3>
+                    </div>
+                    <span className="text-xs tabular-nums text-ink-muted">
+                      {formatDateTime(item.createdAt)}
+                    </span>
                   </div>
-                  <span className="text-xs tabular-nums text-ink-muted">
-                    {formatDateTime(item.createdAt)}
-                  </span>
-                </div>
-                <StructuredReportView content={item.content} />
-              </Card>
-            ))}
-          </div>
+                  <StructuredReportView content={item.content} />
+                </Card>
+              ))}
+            </div>
+            <Pagination
+              page={pagination.page}
+              pageSize={pagination.pageSize}
+              totalItems={pagination.totalItems}
+              onPageChange={pagination.setPage}
+              onPageSizeChange={pagination.setPageSize}
+            />
+          </>
         )}
       </div>
 
