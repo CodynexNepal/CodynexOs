@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GeminiAdapter } from '../../src/ai/adapters/gemini.adapter';
 import { GroqAdapter } from '../../src/ai/adapters/groq.adapter';
+import { OpenAiAdapter } from '../../src/ai/adapters/openai.adapter';
 import * as runtimeSecrets from '../../src/services/runtime-secrets.service';
 
 describe('AI adapter model deprecation fallback & discovery', () => {
@@ -81,5 +82,67 @@ describe('AI adapter model deprecation fallback & discovery', () => {
     expect(res.model).toBe('llama-3.1-8b-instant');
     expect(res.content).toBe('{"summary":"groq-ok"}');
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('GroqAdapter falls back to llama-3.1-8b-instant on tool choice error', async () => {
+    vi.spyOn(runtimeSecrets, 'resolveRuntimeSecret').mockResolvedValue('test-groq-key');
+
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: { message: 'Tool choice is none, but model called a tool' },
+          }),
+          { status: 400 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: '{"summary":"fallback-ok"}' } }],
+            usage: { prompt_tokens: 10, completion_tokens: 5 },
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const adapter = new GroqAdapter();
+    const res = await adapter.complete({
+      systemPrompt: 'sys',
+      userPrompt: 'hello',
+      model: 'openai/gpt-oss-20b',
+      responseFormat: 'json',
+    });
+
+    expect(res.model).toBe('llama-3.1-8b-instant');
+    expect(res.content).toBe('{"summary":"fallback-ok"}');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('OpenAiAdapter resolves runtime secret openai_api_key and completes', async () => {
+    vi.spyOn(runtimeSecrets, 'resolveRuntimeSecret').mockResolvedValue('sk-test-openai');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"summary":"openai-ok"}' } }],
+          usage: { prompt_tokens: 100, completion_tokens: 50 },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const adapter = new OpenAiAdapter();
+    const res = await adapter.complete({
+      systemPrompt: 'sys',
+      userPrompt: 'hello',
+      responseFormat: 'json',
+    });
+
+    expect(res.provider).toBe('openai');
+    expect(res.content).toBe('{"summary":"openai-ok"}');
+    expect(res.estimatedCostUsd).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

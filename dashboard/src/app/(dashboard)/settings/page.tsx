@@ -386,6 +386,7 @@ export default function SettingsPage() {
                 >
                   <option value="gemini_api_key">gemini_api_key</option>
                   <option value="groq_api_key">groq_api_key</option>
+                  <option value="openai_api_key">openai_api_key</option>
                   <option value="github_token">github_token</option>
                   <option value="telegram_bot_token">telegram_bot_token</option>
                 </select>

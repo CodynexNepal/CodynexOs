@@ -173,6 +173,11 @@ export function createOsRouter(): Router {
     domainController.commitPushWorkspace,
   );
   router.get('/github/pull-requests', domainController.listPullRequests);
+  router.post(
+    '/github/pull-requests/sync',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    domainController.syncAllPullRequests,
+  );
 
   router.get('/qa/reports', domainController.listQaReports);
   router.post(

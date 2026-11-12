@@ -8,7 +8,7 @@ import {
   AiProviderError,
 } from '../ai-provider.interface';
 
-const GROQ_FALLBACK_MODELS = ['llama-3.1-8b-instant', 'openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
+const GROQ_FALLBACK_MODELS = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'qwen/qwen3-32b'];
 
 export class GroqAdapter implements AiProviderAdapter {
   public readonly name = AiProviderName.GROQ;
@@ -31,7 +31,7 @@ export class GroqAdapter implements AiProviderAdapter {
         (m) =>
           m.id &&
           m.active !== false &&
-          !/whisper|guard|tts|playai|vision|distil/i.test(m.id),
+          !/whisper|guard|tts|playai|vision|distil|gpt-oss/i.test(m.id),
       );
       const preferred = usable.find((m) => /llama-3\.1|llama-3\.3|qwen|mixtral/i.test(m.id!));
       return preferred?.id || usable[0]?.id || null;
@@ -122,7 +122,9 @@ export class GroqAdapter implements AiProviderAdapter {
           lastErr = err;
           if (
             err.code === 'PROVIDER_ERROR' &&
-            /does not exist|not have access|decommissioned|not_found/i.test(err.message)
+            /does not exist|not have access|decommissioned|not_found|tool choice|called a tool|tool_use_failed|does not support/i.test(
+              err.message,
+            )
           ) {
             continue;
           }

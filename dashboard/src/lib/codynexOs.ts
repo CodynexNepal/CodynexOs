@@ -117,6 +117,7 @@ export const codynexApi = {
       body: { branchName: string; title: string; commitMessage?: string; body?: string }
     ) => api.post(`/github/repos/${id}/workspace/push-pr`, body),
     pullRequests: () => api.get("/github/pull-requests"),
+    syncAllPullRequests: () => api.post("/github/pull-requests/sync"),
   },
   qa: {
     reports: () => api.get("/qa/reports"),

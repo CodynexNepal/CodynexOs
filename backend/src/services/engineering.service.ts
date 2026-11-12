@@ -562,7 +562,7 @@ export class EngineeringService {
     const headers = await this.buildGithubHeaders();
 
     const res = await fetch(
-      `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls?state=open&per_page=15`,
+      `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls?state=all&per_page=20`,
       { headers },
     );
 
@@ -575,12 +575,20 @@ export class EngineeringService {
     const pulls = (await res.json()) as Array<{
       number: number;
       title: string;
+      state?: string;
+      merged_at?: string | null;
       html_url: string;
       head?: { ref?: string };
     }>;
 
     const existing = await this.engRepo.findAllPullRequests();
     for (const pr of pulls) {
+      const mappedStatus: 'OPEN' | 'MERGED' | 'CLOSED' = pr.merged_at
+        ? 'MERGED'
+        : pr.state === 'open'
+          ? 'OPEN'
+          : 'CLOSED';
+
       const match = existing.find((e) => e.repositoryId === repo.id && e.prNumber === pr.number);
       if (!match) {
         await this.engRepo.savePullRequest({
@@ -588,9 +596,13 @@ export class EngineeringService {
           prNumber: pr.number,
           branchName: pr.head?.ref ?? 'unknown',
           title: pr.title.slice(0, 255),
-          status: 'OPEN',
+          status: mappedStatus,
           htmlUrl: pr.html_url,
         });
+      } else if (match.status !== mappedStatus || match.title !== pr.title.slice(0, 255)) {
+        match.status = mappedStatus;
+        match.title = pr.title.slice(0, 255);
+        await this.engRepo.savePullRequest(match);
       }
     }
 
@@ -607,6 +619,28 @@ export class EngineeringService {
     });
 
     return { syncedPullRequests: pulls.length };
+  }
+
+  async syncAllPullRequests(actorId: string) {
+    const repos = await this.engRepo.findAllRepos();
+    let syncedRepositories = 0;
+    let syncedPullRequests = 0;
+
+    const batchSize = 5;
+    for (let i = 0; i < repos.length; i += batchSize) {
+      const batch = repos.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map((repo) => this.syncRepoFromGithub(repo.id, actorId)),
+      );
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          syncedRepositories += 1;
+          syncedPullRequests += result.value.syncedPullRequests;
+        }
+      }
+    }
+
+    return { syncedRepositories, totalRepositories: repos.length, syncedPullRequests };
   }
 
   async analyzeRepo(repoId: string, actorId: string) {

@@ -259,6 +259,15 @@ export class DomainController {
     }
   };
 
+  syncAllPullRequests = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.engService.syncAllPullRequests(req.user!.userId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   listQaReports = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.engService.listQaReports();

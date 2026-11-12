@@ -309,7 +309,9 @@ export class ModelRouterService {
     throw new AiProviderError(
       AiProviderName.GEMINI,
       sawQuotaOrRateLimit ? 'QUOTA_EXHAUSTED' : 'PROVIDER_ERROR',
-      `No configured free-tier AI provider succeeded: ${errors.join(' | ')}`,
+      allowPaid
+        ? `No configured AI provider succeeded: ${errors.join(' | ')}`
+        : `No configured free-tier AI provider succeeded: ${errors.join(' | ')}`,
     );
   }
 }

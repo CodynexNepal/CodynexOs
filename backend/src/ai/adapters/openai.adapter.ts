@@ -1,5 +1,6 @@
 import { dotEnvConfig } from '../../configs/envConfig';
 import { AiProviderName } from '../../constant/enum.constant';
+import { resolveRuntimeSecret } from '../../services/runtime-secrets.service';
 import {
   AiCompletionRequest,
   AiCompletionResponse,
@@ -16,15 +17,13 @@ export class OpenAiAdapter implements AiProviderAdapter {
   }
 
   async complete(req: AiCompletionRequest): Promise<AiCompletionResponse> {
-    if (!dotEnvConfig.ALLOW_PAID_PROVIDERS) {
+    const apiKey = await resolveRuntimeSecret('openai_api_key');
+    if (!apiKey) {
       throw new AiProviderError(
         this.name,
         'NOT_CONFIGURED',
-        'Paid AI providers are disabled by policy (ALLOW_PAID_PROVIDERS=false).',
+        'OPENAI_API_KEY is not configured. Add it in Settings or .env.',
       );
-    }
-    if (!this.isConfigured()) {
-      throw new AiProviderError(this.name, 'NOT_CONFIGURED', 'OPENAI_API_KEY is not configured.');
     }
 
     const model = req.model || dotEnvConfig.OPENAI_MODEL;
@@ -33,7 +32,7 @@ export class OpenAiAdapter implements AiProviderAdapter {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${dotEnvConfig.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model,

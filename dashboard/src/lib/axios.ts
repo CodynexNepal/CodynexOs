@@ -3,7 +3,7 @@ import { env, TOKEN_KEY } from "./env";
 
 export const api = axios.create({
   baseURL: env.apiUrl,
-  timeout: 20000,
+  timeout: 90000,
   withCredentials: true,
   headers: { "Content-Type": "application/json", Accept: "application/json" },
 });
@@ -80,9 +80,17 @@ export function toApiError(error: unknown): ApiErrorShape {
     const status = err.response?.status ?? 0;
     const data = err.response?.data;
     if (status === 0) {
+      if (err.code === "ECONNABORTED") {
+        return {
+          message: "Request timed out while waiting for CodyNex OS backend.",
+          status: 0,
+          code: err.code,
+        };
+      }
       return {
         message: "Cannot reach CodyNex OS backend. Check that the API server is running.",
         status: 0,
+        code: err.code,
       };
     }
     return {
