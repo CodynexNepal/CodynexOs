@@ -1,6 +1,7 @@
 import { dotEnvConfig } from '../../configs/envConfig';
 import { AiProviderName } from '../../constant/enum.constant';
 import { resolveRuntimeSecret } from '../../services/runtime-secrets.service';
+import { extractJsonObjectString } from '../../utils/report-formatter.util';
 import {
   AiChatMessage,
   AiCompletionRequest,
@@ -46,10 +47,12 @@ export class GroqAdapter implements AiProviderAdapter {
     apiKey: string,
     model: string,
     req: AiCompletionRequest,
+    disableJsonMode = false,
   ): Promise<AiCompletionResponse> {
     const started = Date.now();
     const useTools = Boolean(req.tools && req.tools.length > 0);
-    const messages =
+    const useJsonMode = req.responseFormat === 'json' && !useTools && !disableJsonMode;
+    const rawMessages =
       req.messages && req.messages.length > 0
         ? [
             ...(req.messages.some((m) => m.role === 'system')
@@ -78,6 +81,21 @@ export class GroqAdapter implements AiProviderAdapter {
             { role: 'user', content: req.userPrompt },
           ];
 
+    const hasJsonKeyword = rawMessages.some(
+      (m) => typeof m.content === 'string' && /\bjson\b/i.test(m.content),
+    );
+    const messages =
+      req.responseFormat === 'json' && (!hasJsonKeyword || disableJsonMode)
+        ? rawMessages.map((m, idx) =>
+            idx === 0 && m.role === 'system'
+              ? {
+                  ...m,
+                  content: `${m.content || ''}\nRespond strictly with a single valid JSON object and no markdown or extra commentary.`.trim(),
+                }
+              : m,
+          )
+        : rawMessages;
+
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -89,9 +107,7 @@ export class GroqAdapter implements AiProviderAdapter {
         model,
         temperature: req.temperature ?? 0.2,
         max_tokens: req.maxOutputTokens ?? 2048,
-        ...(req.responseFormat === 'json' && !useTools
-          ? { response_format: { type: 'json_object' } }
-          : {}),
+        ...(useJsonMode ? { response_format: { type: 'json_object' } } : {}),
         ...(useTools
           ? {
               tools: req.tools!.map((t) => ({
@@ -143,11 +159,36 @@ export class GroqAdapter implements AiProviderAdapter {
         };
       }>;
       usage?: { prompt_tokens?: number; completion_tokens?: number };
-      error?: { message?: string };
+      error?: { message?: string; code?: string; failed_generation?: string };
     };
 
     if (!res.ok) {
       const msg = data.error?.message || `Groq HTTP ${res.status}`;
+      const isJsonValidationError =
+        data.error?.code === 'json_validate_failed' ||
+        /failed to generate json|json_validate_failed|failed_generation/i.test(msg);
+
+      if (isJsonValidationError) {
+        if (data.error?.failed_generation) {
+          const recovered = extractJsonObjectString(data.error.failed_generation);
+          if (recovered) {
+            return {
+              provider: this.name,
+              model,
+              content: recovered,
+              finishReason: 'stop',
+              inputTokens: 0,
+              outputTokens: 0,
+              estimatedCostUsd: 0,
+              latencyMs,
+            };
+          }
+        }
+        if (!disableJsonMode) {
+          return this.invokeModel(apiKey, model, req, true);
+        }
+      }
+
       if (/quota|rate limit/i.test(msg)) {
         throw new AiProviderError(this.name, 'QUOTA_EXHAUSTED', msg, {
           category: 'QUOTA',
@@ -182,10 +223,16 @@ export class GroqAdapter implements AiProviderAdapter {
             })
         : undefined;
 
+    const rawContent = data.choices?.[0]?.message?.content ?? '';
+    const normalizedContent =
+      req.responseFormat === 'json' && rawContent
+        ? extractJsonObjectString(rawContent) ?? rawContent
+        : rawContent;
+
     return {
       provider: this.name,
       model,
-      content: data.choices?.[0]?.message?.content ?? '',
+      content: normalizedContent,
       toolCalls,
       finishReason: toolCalls?.length ? 'tool_calls' : 'stop',
       inputTokens: data.usage?.prompt_tokens ?? 0,
@@ -218,7 +265,7 @@ export class GroqAdapter implements AiProviderAdapter {
           lastErr = err;
           if (
             err.code === 'PROVIDER_ERROR' &&
-            /does not exist|not have access|decommissioned|not_found|tool choice|called a tool|tool_use_failed|does not support/i.test(
+            /does not exist|not have access|decommissioned|not_found|tool choice|called a tool|tool_use_failed|does not support|failed to generate json|json_validate_failed|failed_generation/i.test(
               err.message,
             )
           ) {
@@ -232,7 +279,13 @@ export class GroqAdapter implements AiProviderAdapter {
 
     const discovered = await this.discoverChatModel(apiKey);
     if (discovered && !candidates.includes(discovered)) {
-      return this.invokeModel(apiKey, discovered, req);
+      try {
+        return await this.invokeModel(apiKey, discovered, req);
+      } catch (err) {
+        if (err instanceof AiProviderError) {
+          lastErr = err;
+        }
+      }
     }
 
     throw (

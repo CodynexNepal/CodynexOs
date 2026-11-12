@@ -1,5 +1,6 @@
 import api from "./axios";
 import type {
+  AgentLiveActivityResponse,
   AiEmployeeItem,
   ApprovalItem,
   AuthUser,
@@ -48,6 +49,10 @@ export const codynexApi = {
     }) => api.post("/command", body),
   },
   projects: () => api.get<{ success: boolean; data: ProjectItem[] }>("/projects"),
+  agents: {
+    liveActivity: () =>
+      api.get<{ success: boolean; data: AgentLiveActivityResponse }>("/agents/live-activity"),
+  },
   tasks: {
     list: (params?: { projectId?: string; status?: string }) =>
       api.get<{ success: boolean; data: TaskItem[] }>("/tasks", { params }),

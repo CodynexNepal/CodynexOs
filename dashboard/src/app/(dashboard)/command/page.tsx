@@ -25,6 +25,7 @@ import { Input, Textarea } from "@/components/ui/Input";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { Pagination, usePagination } from "@/components/ui/Pagination";
+import { LiveCompanyFlowVisualizer } from "@/components/domain/LiveCompanyFlowVisualizer";
 import { useApiQuery } from "@/hooks/useApi";
 import { commandSchema } from "@/schemas/forms.schema";
 import { codynexApi, unwrap } from "@/lib/codynexOs";
@@ -401,7 +402,7 @@ export default function CommandCenterPage() {
                       <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
                     <Link
-                      href="/approvals"
+                      href="/deployments"
                       className="inline-flex items-center gap-1 rounded-md bg-brand-ink px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 dark:bg-brand dark:text-brand-ink"
                     >
                       Approvals Queue
@@ -477,6 +478,9 @@ export default function CommandCenterPage() {
             </div>
           </Card>
         </div>
+
+        {/* Live Parallel AI Workforce & Company Flow DAG */}
+        <LiveCompanyFlowVisualizer projectId={result?.project.id} />
 
         {/* Recent CEO Directives & Projects */}
         <div className="space-y-3">

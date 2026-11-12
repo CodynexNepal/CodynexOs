@@ -82,9 +82,16 @@ describe('AI COO CommandService planning & approval gating', () => {
     });
 
     expect(res.plannerSource).toBe('deterministic');
-    expect(res.createdTaskCount).toBe(4);
-    expect(savedTasks.map((t) => t.taskType)).toEqual(['architecture', 'code', 'code', 'qa_verify']);
-    expect(savedDeps).toHaveLength(4);
+    expect(res.createdTaskCount).toBe(6);
+    expect(savedTasks.map((t) => t.taskType)).toEqual([
+      'architecture',
+      'ui_ux_design',
+      'code',
+      'code',
+      'qa_verify',
+      'devops_deploy',
+    ]);
+    expect(savedDeps).toHaveLength(8);
   });
 
   it('creates a CEO approval request for outbound campaign commands', async () => {

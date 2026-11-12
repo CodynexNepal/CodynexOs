@@ -30,6 +30,14 @@ export class OrganizationRepository {
     return this.empRepo.findOne({ where: { slug }, relations: ['department'] });
   }
 
+  findEmployeesByDepartmentId(departmentId: string) {
+    return this.empRepo.find({
+      where: { departmentId, isActive: true },
+      relations: ['department'],
+      order: { roleTitle: 'ASC' },
+    });
+  }
+
   findEmployeeById(id: string) {
     return this.empRepo.findOne({ where: { id }, relations: ['department'] });
   }

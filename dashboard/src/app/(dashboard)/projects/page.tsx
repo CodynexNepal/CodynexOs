@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, FolderKanban } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, Eye, FolderKanban, Monitor, Smartphone } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card } from "@/components/ui/Card";
 import { Badge, statusTone } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { EmptyState, ErrorBanner } from "@/components/ui/EmptyState";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { CardListSkeleton } from "@/components/ui/Skeleton";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useApiQuery } from "@/hooks/useApi";
 import { codynexApi } from "@/lib/codynexOs";
 import { formatDateTime } from "@/lib/utils";
@@ -17,13 +20,19 @@ export default function ProjectsPage() {
   const { data, loading, error, refetch } = useApiQuery<ProjectItem[]>(() => codynexApi.projects());
   const tasksQuery = useApiQuery<TaskItem[]>(() => codynexApi.tasks.list());
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [previewProject, setPreviewProject] = useState<{
+    title: string;
+    url: string;
+  } | null>(null);
+  const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
+  const pagination = usePagination(data ?? [], 8);
 
   return (
     <DashboardShell title="Projects" subtitle="Structured initiatives generated from CEO instructions">
       <div className="space-y-4">
         {error && <ErrorBanner message={error} onRetry={refetch} />}
         {loading ? (
-          <Skeleton className="h-64 w-full" />
+          <CardListSkeleton count={3} columns={1} />
         ) : !data || data.length === 0 ? (
           <EmptyState
             icon={FolderKanban}
@@ -39,13 +48,20 @@ export default function ProjectsPage() {
             }
           />
         ) : (
+          <>
           <div className="space-y-3">
-            {data.map((p) => {
+            {pagination.pageItems.map((p) => {
               const projectTasks = (tasksQuery.data ?? []).filter((t) => t.projectId === p.id);
               const done = projectTasks.filter((t) => t.status === "COMPLETED").length;
               const total = projectTasks.length;
               const pct = total > 0 ? Math.round((done / total) * 100) : 0;
               const isExpanded = expandedId === p.id;
+              const plan = (p.structuredPlan ?? {}) as {
+                livePreviewUrl?: string;
+                liveUrl?: string;
+              };
+              const livePreviewUrl = plan.livePreviewUrl || plan.liveUrl || null;
+              const liveUrl = plan.liveUrl || plan.livePreviewUrl || null;
 
               return (
                 <Card key={p.id} className="p-5">
@@ -77,18 +93,43 @@ export default function ProjectsPage() {
                       </span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setExpandedId(isExpanded ? null : p.id)}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-ink hover:underline"
-                    >
-                      {isExpanded ? (
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5" />
+                    <div className="flex flex-wrap items-center gap-2">
+                      {livePreviewUrl && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() =>
+                            setPreviewProject({ title: p.title, url: livePreviewUrl })
+                          }
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Live UI/UX Preview
+                        </Button>
                       )}
-                      {isExpanded ? "Hide Tasks" : "View Tasks"}
-                    </button>
+                      {liveUrl && (
+                        <a
+                          href={liveUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-8 items-center gap-1 rounded-md border border-surface-border bg-surface px-3 text-xs font-semibold text-ink hover:border-ink"
+                        >
+                          Open Live Link
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-ink hover:underline"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        )}
+                        {isExpanded ? "Hide Tasks" : "View Tasks"}
+                      </button>
+                    </div>
                   </div>
 
                   {isExpanded && (
@@ -119,8 +160,65 @@ export default function ProjectsPage() {
               );
             })}
           </div>
+          <Pagination
+            page={pagination.page}
+            pageSize={pagination.pageSize}
+            totalItems={pagination.totalItems}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.setPageSize}
+          />
+          </>
         )}
       </div>
+
+      <Modal
+        open={Boolean(previewProject)}
+        onClose={() => setPreviewProject(null)}
+        title={previewProject ? `Live UI/UX Preview — ${previewProject.title}` : "Live UI/UX Preview"}
+      >
+        {previewProject && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant={viewport === "desktop" ? "primary" : "outline"}
+                  size="sm"
+                  onClick={() => setViewport("desktop")}
+                >
+                  <Monitor className="h-3.5 w-3.5" />
+                  Desktop
+                </Button>
+                <Button
+                  variant={viewport === "mobile" ? "primary" : "outline"}
+                  size="sm"
+                  onClick={() => setViewport("mobile")}
+                >
+                  <Smartphone className="h-3.5 w-3.5" />
+                  Mobile
+                </Button>
+              </div>
+              <a
+                href={previewProject.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-brand-ink px-3 text-xs font-semibold text-white dark:bg-brand dark:text-brand-ink"
+              >
+                Open Live Link
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </div>
+            <div className="flex justify-center rounded-lg border border-surface-border bg-surface-muted p-2">
+              <iframe
+                src={previewProject.url}
+                title={previewProject.title}
+                className={`h-[480px] rounded border border-surface-border bg-white transition-all ${
+                  viewport === "mobile" ? "w-[390px]" : "w-full"
+                }`}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
     </DashboardShell>
   );
 }

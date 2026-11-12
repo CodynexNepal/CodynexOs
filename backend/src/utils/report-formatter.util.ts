@@ -6,16 +6,46 @@ export interface StructuredAiReport {
   [key: string]: unknown;
 }
 
-export function parseStructuredAiResult(raw: string): StructuredAiReport | null {
-  const cleaned = raw
-    .trim()
+export function extractJsonObjectString(raw: string): string | null {
+  const withoutThinking = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const cleaned = withoutThinking
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .trim();
 
   if (!cleaned) return null;
+
   try {
-    const parsed = JSON.parse(cleaned);
+    const direct = JSON.parse(cleaned);
+    if (direct && typeof direct === 'object') {
+      return JSON.stringify(direct);
+    }
+  } catch {
+    // Fall through to balanced-brace extraction
+  }
+
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = cleaned.slice(firstBrace, lastBrace + 1);
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object') {
+        return JSON.stringify(parsed);
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+export function parseStructuredAiResult(raw: string): StructuredAiReport | null {
+  const jsonStr = extractJsonObjectString(raw);
+  if (!jsonStr) return null;
+  try {
+    const parsed = JSON.parse(jsonStr);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       return parsed as StructuredAiReport;
     }

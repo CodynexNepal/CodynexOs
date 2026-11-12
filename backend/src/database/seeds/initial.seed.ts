@@ -7,6 +7,7 @@ import { SystemSettingEntity } from '../../entities/system-setting.entity';
 import { CompanyMemoryEntity } from '../../entities/company-memory.entity';
 import { KnowledgeDocumentEntity } from '../../entities/knowledge-document.entity';
 import { BusinessEntity } from '../../entities/business.entity';
+import { TaskEntity } from '../../entities/task.entity';
 import { AI_EMPLOYEE_SEEDS, DEPARTMENT_SEEDS } from '../../constant/company.constant';
 import { MemoryCategory, UserRole } from '../../constant/enum.constant';
 import { dotEnvConfig } from '../../configs/envConfig';
@@ -216,5 +217,27 @@ export async function runInitialSeed(): Promise<void> {
       }),
     );
     logger.info('Seeded default CodyNex business');
+  }
+
+  // 9. Backfill legacy unassigned tasks to their department's lead agent
+  const taskRepo = AppDataSource.getRepository(TaskEntity);
+  const unassignedTasks = await taskRepo.find({
+    where: { assignedEmployeeId: null as unknown as string },
+    relations: ['department'],
+  });
+
+  if (unassignedTasks.length > 0) {
+    for (const task of unassignedTasks) {
+      if (task.departmentId) {
+        const lead = await empRepo.findOne({
+          where: { departmentId: task.departmentId, isActive: true },
+          order: { roleTitle: 'ASC' },
+        });
+        if (lead) {
+          await taskRepo.update({ id: task.id }, { assignedEmployeeId: lead.id });
+        }
+      }
+    }
+    logger.info(`Backfilled ${unassignedTasks.length} unassigned tasks to active department lead agents`);
   }
 }

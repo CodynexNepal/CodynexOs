@@ -48,6 +48,15 @@ export interface ProjectItem {
   createdAt: string;
 }
 
+export interface TaskCurrentStep {
+  stepNumber: number;
+  totalSteps: number;
+  phase: string;
+  action: string;
+  detail: string;
+  updatedAt: string;
+}
+
 export interface TaskItem {
   id: string;
   projectId: string;
@@ -63,11 +72,36 @@ export interface TaskItem {
   status: string;
   retryCount: number;
   maxRetries: number;
+  inputPayload?: Record<string, unknown> & { _currentStep?: TaskCurrentStep };
   outputPayload: Record<string, unknown> | null;
   verificationResult: Record<string, unknown> | null;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
+}
+
+export interface AgentActivityEvent {
+  stepNumber: number;
+  totalSteps: number;
+  phase: string;
+  action: string;
+  detail: string;
+  employeeId?: string | null;
+  employeeRole?: string;
+  employeeSlug?: string;
+  departmentSlug?: string;
+  departmentName?: string;
+  taskId: string;
+  taskTitle: string;
+  projectId: string;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface AgentLiveActivityResponse {
+  runningTasks: TaskItem[];
+  recentLogs: TaskLogItem[];
+  recentTasks: TaskItem[];
 }
 
 export interface TaskLogItem {
@@ -86,6 +120,7 @@ export interface ApprovalItem {
   actionType: string;
   summary: string;
   riskAssessment: string | null;
+  payload?: Record<string, unknown> | null;
   status: string;
   reviewNote: string | null;
   createdAt: string;

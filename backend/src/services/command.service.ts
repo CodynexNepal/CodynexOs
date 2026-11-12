@@ -15,6 +15,7 @@ import {
 } from '../constant/enum.constant';
 import { NotificationService } from './notification.service';
 import { AuditService } from './audit.service';
+import { extractJsonObjectString } from '../utils/report-formatter.util';
 
 export interface PlannedTaskSpec {
   key: string;
@@ -231,7 +232,7 @@ export class CommandService {
       }
     }
 
-    if (/build|app|saas|module|fix|test|api|dashboard|frontend|backend|architect|investigate/.test(lower)) {
+    if (/ui|ux|design|mockup|prototype|landing|website|page|screen|portal|platform|software|build|app|saas|module|fix|test|api|dashboard|frontend|backend|architect|investigate/.test(lower)) {
       tasks.push({
         key: 'architecture',
         title: 'Technical Architecture & Risk Assessment',
@@ -239,10 +240,29 @@ export class CommandService {
         departmentSlug: 'executive',
         employeeSlug: 'cto',
         taskType: 'architecture',
-        priority: 90,
+        priority: 92,
         dependsOnKeys: tasks.some((t) => t.key === 'research') ? ['research'] : [],
         requiresApproval: false,
       });
+
+      const needsUiUx =
+        /ui|ux|design|mockup|prototype|landing|website|page|screen|portal|platform|software|build|app|saas|dashboard|frontend/.test(
+          lower,
+        );
+
+      if (needsUiUx) {
+        tasks.push({
+          key: 'ui_ux_design',
+          title: 'UI/UX Design & Interactive Live Prototype',
+          description: `Design modern flat UI/UX layout, components, and generate a live interactive HTML5 preview for: ${instruction}`,
+          departmentSlug: 'engineering',
+          employeeSlug: 'frontend_lead',
+          taskType: 'ui_ux_design',
+          priority: 90,
+          dependsOnKeys: ['architecture'],
+          requiresApproval: false,
+        });
+      }
 
       tasks.push({
         key: 'backend',
@@ -251,20 +271,20 @@ export class CommandService {
         departmentSlug: 'engineering',
         employeeSlug: 'backend_lead',
         taskType: 'code',
-        priority: 80,
-        dependsOnKeys: ['architecture'],
+        priority: 82,
+        dependsOnKeys: needsUiUx ? ['architecture', 'ui_ux_design'] : ['architecture'],
         requiresApproval: false,
       });
 
       tasks.push({
         key: 'frontend',
         title: 'Frontend UI Implementation',
-        description: `Build responsive TypeScript/Tailwind components and wire live API hooks for: ${instruction}`,
+        description: `Build responsive TypeScript/Tailwind components aligned with UI/UX prototype and wire live API hooks for: ${instruction}`,
         departmentSlug: 'engineering',
         employeeSlug: 'frontend_lead',
         taskType: 'code',
-        priority: 75,
-        dependsOnKeys: ['architecture'],
+        priority: 80,
+        dependsOnKeys: needsUiUx ? ['architecture', 'ui_ux_design'] : ['architecture'],
         requiresApproval: false,
       });
 
@@ -279,6 +299,20 @@ export class CommandService {
         dependsOnKeys: ['backend', 'frontend'],
         requiresApproval: false,
       });
+
+      if (needsUiUx) {
+        tasks.push({
+          key: 'devops_deploy',
+          title: 'DevOps Live Deployment & Preview URL Publishing',
+          description: `Package verified UI/UX + frontend/backend deliverables, publish the live link, and request CEO sign-off.`,
+          departmentSlug: 'engineering',
+          employeeSlug: 'devops_engineer',
+          taskType: 'devops_deploy',
+          priority: 88,
+          dependsOnKeys: ['qa'],
+          requiresApproval: false,
+        });
+      }
     }
 
     if (tasks.length === 0) {
@@ -342,7 +376,7 @@ export class CommandService {
         const aiRes = await this.modelRouter.complete(
           {
             systemPrompt:
-              'You are the AI COO of CodyNex OS. Return JSON with key "tasks" (array of {key, title, description, departmentSlug, employeeSlug, taskType, priority, dependsOnKeys, requiresApproval}). Valid departmentSlug: executive, engineering, marketing, sales, operations.',
+              'You are the AI COO of CodyNex OS. Return JSON with key "tasks" (array of {key, title, description, departmentSlug, employeeSlug, taskType, priority, dependsOnKeys, requiresApproval}). Valid departmentSlug and employeeSlug pairs: executive (coo, cto), engineering (frontend_lead, backend_lead, ai_engineer, devops_engineer, qa_engineer, security_engineer), marketing (marketing_director, seo_specialist, content_marketer, market_researcher), sales (sales_director, lead_gen_specialist, outreach_specialist, followup_specialist, crm_specialist), operations (project_manager, business_analyst, customer_success_manager). Always pick an exact employeeSlug from this list.',
             userPrompt: `Company Memory:\n${memoryContext || 'None'}\n\nInstruction:\n${wrapped}`,
             responseFormat: 'json',
             maxOutputTokens: 1500,
@@ -355,7 +389,8 @@ export class CommandService {
             fallbackModel: coo?.fallbackModel,
           },
         );
-        const parsed = JSON.parse(aiRes.content) as { tasks?: PlannedTaskSpec[] };
+        const extracted = extractJsonObjectString(aiRes.content);
+        const parsed = extracted ? (JSON.parse(extracted) as { tasks?: PlannedTaskSpec[] }) : {};
         if (Array.isArray(parsed.tasks) && parsed.tasks.length > 0) {
           planTasks = parsed.tasks;
           plannerSource = 'ai';
@@ -409,7 +444,11 @@ export class CommandService {
           (await this.orgRepo.findDepartmentBySlug('operations'));
         if (!dept) continue;
 
-        const emp = await this.orgRepo.findEmployeeBySlug(spec.employeeSlug);
+        let emp = spec.employeeSlug ? await this.orgRepo.findEmployeeBySlug(spec.employeeSlug) : null;
+        if (!emp) {
+          const deptEmployees = await this.orgRepo.findEmployeesByDepartmentId(dept.id);
+          emp = deptEmployees[0] ?? null;
+        }
         const status = spec.requiresApproval ? TaskStatus.PENDING_APPROVAL : TaskStatus.QUEUED;
         const idempotencyKey = crypto
           .createHash('sha256')

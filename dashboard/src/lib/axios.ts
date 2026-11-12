@@ -45,11 +45,62 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 });
 
 let redirecting = false;
+let refreshPromise: Promise<string | null> | null = null;
+
+interface RetryableRequestConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = axios
+    .post<{ success?: boolean; data?: { accessToken?: string } }>(
+      `${env.apiUrl}/auth/refresh`,
+      {},
+      { withCredentials: true, timeout: 15000 }
+    )
+    .then((res) => {
+      const nextToken = res.data?.data?.accessToken ?? null;
+      if (nextToken) {
+        setToken(nextToken);
+      }
+      return nextToken;
+    })
+    .catch(() => null)
+    .finally(() => {
+      refreshPromise = null;
+    });
+  return refreshPromise;
+}
+
 api.interceptors.response.use(
   (res) => res,
-  (error: unknown) => {
+  async (error: unknown) => {
     const parsed = toApiError(error);
-    if (parsed.status === 401 && typeof window !== "undefined") {
+    const axiosErr = axios.isAxiosError(error) ? error : null;
+    const originalRequest = axiosErr?.config as RetryableRequestConfig | undefined;
+    const reqUrl = originalRequest?.url ?? "";
+    const isAuthRoute =
+      reqUrl.includes("/auth/login") ||
+      reqUrl.includes("/auth/refresh") ||
+      reqUrl.includes("/auth/logout");
+
+    if (
+      parsed.status === 401 &&
+      typeof window !== "undefined" &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !isAuthRoute
+    ) {
+      originalRequest._retry = true;
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        originalRequest.headers.set("Authorization", `Bearer ${newToken}`);
+        return api(originalRequest);
+      }
+    }
+
+    if (parsed.status === 401 && typeof window !== "undefined" && !isAuthRoute) {
       clearToken();
       if (!window.location.pathname.startsWith("/login") && !redirecting) {
         redirecting = true;

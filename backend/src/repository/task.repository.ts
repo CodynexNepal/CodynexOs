@@ -4,6 +4,7 @@ import { TaskDependencyEntity } from '../entities/task-dependency.entity';
 import { TaskExecutionEntity } from '../entities/task-execution.entity';
 import { TaskLogEntity } from '../entities/task-log.entity';
 import { TaskStatus } from '../constant/enum.constant';
+import { socketServer } from '../socket/socket.server';
 
 export class TaskRepository {
   private get repo() {
@@ -71,7 +72,7 @@ export class TaskRepository {
     metadata: Record<string, unknown> = {},
     executionId?: string | null,
   ) {
-    return this.logRepo.save(
+    const saved = await this.logRepo.save(
       this.logRepo.create({
         taskId,
         executionId: executionId ?? null,
@@ -80,6 +81,20 @@ export class TaskRepository {
         metadata,
       }),
     );
+    try {
+      socketServer.emit('task:log', {
+        id: saved.id,
+        taskId,
+        executionId: executionId ?? null,
+        level,
+        message,
+        metadata,
+        createdAt: saved.createdAt,
+      });
+    } catch {
+      // Best-effort socket emission
+    }
+    return saved;
   }
 
   async getLogs(taskId: string) {
@@ -87,6 +102,21 @@ export class TaskRepository {
       where: { taskId },
       order: { createdAt: 'ASC' },
       take: 200,
+    });
+  }
+
+  async getRecentLogs(limit = 50) {
+    return this.logRepo.find({
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+  }
+
+  async findRunningTasks() {
+    return this.repo.find({
+      where: { status: TaskStatus.RUNNING },
+      relations: ['department', 'assignedEmployee', 'project'],
+      order: { updatedAt: 'DESC' },
     });
   }
 

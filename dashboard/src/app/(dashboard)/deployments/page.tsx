@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Rocket, X } from "lucide-react";
+import { Check, ExternalLink, Rocket, X } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card } from "@/components/ui/Card";
 import { Badge, statusTone } from "@/components/ui/Badge";
@@ -77,6 +77,19 @@ export default function DeploymentCenterPage() {
                       <p className="mt-1 rounded bg-surface-muted px-2.5 py-1.5 text-xs text-ink">
                         CEO Note: {item.reviewNote}
                       </p>
+                    )}
+                    {typeof item.payload?.liveUrl === "string" && (
+                      <div className="pt-1">
+                        <a
+                          href={item.payload.liveUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-surface-border bg-surface-muted px-2.5 text-xs font-semibold text-ink hover:border-ink"
+                        >
+                          Open Live Link
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
                     )}
                   </div>
 

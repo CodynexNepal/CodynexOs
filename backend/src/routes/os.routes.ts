@@ -55,6 +55,7 @@ export function createOsRouter(): Router {
 
   router.get('/projects', osController.projects);
   router.get('/tasks', osController.tasks);
+  router.get('/agents/live-activity', osController.agentLiveActivity);
   router.post(
     '/tasks',
     requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),

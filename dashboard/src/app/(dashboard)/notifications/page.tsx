@@ -1,12 +1,13 @@
 "use client";
 
-import { Bell, CheckCheck } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Bell, CheckCheck } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card } from "@/components/ui/Card";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState, ErrorBanner } from "@/components/ui/EmptyState";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { CardListSkeleton } from "@/components/ui/Skeleton";
 import { useApiQuery } from "@/hooks/useApi";
 import { codynexApi } from "@/lib/codynexOs";
 import { formatDateTime } from "@/lib/utils";
@@ -17,6 +18,7 @@ interface NotificationItem {
   severity: string;
   title: string;
   message: string;
+  linkUrl?: string | null;
   isRead: boolean;
   createdAt: string;
 }
@@ -51,7 +53,7 @@ export default function NotificationsPage() {
         </div>
 
         {loading ? (
-          <Skeleton className="h-64 w-full" />
+          <CardListSkeleton count={4} columns={1} />
         ) : !data || data.length === 0 ? (
           <EmptyState
             icon={Bell}
@@ -71,10 +73,19 @@ export default function NotificationsPage() {
                     <h3 className="mt-1 text-sm font-bold text-ink">{n.title}</h3>
                     <p className="mt-1 text-xs text-ink-muted">{n.message}</p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs tabular-nums text-ink-muted">
                       {formatDateTime(n.createdAt)}
                     </span>
+                    {(n.category === "APPROVAL_REQUEST" || n.linkUrl) && (
+                      <Link
+                        href={n.linkUrl || "/deployments"}
+                        className="inline-flex h-8 items-center gap-1 rounded-md bg-brand px-3 text-xs font-semibold text-brand-ink hover:opacity-90"
+                      >
+                        Review &amp; Approve
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Link>
+                    )}
                     {!n.isRead && (
                       <Button variant="outline" size="sm" onClick={() => markRead(n.id)}>
                         Mark read

@@ -139,10 +139,16 @@ export class OsController {
         .digest('hex')
         .slice(0, 64);
 
+      let assignedEmployeeId = req.body.assignedEmployeeId ?? null;
+      if (!assignedEmployeeId && req.body.departmentId) {
+        const deptEmployees = await this.orgRepo.findEmployeesByDepartmentId(req.body.departmentId);
+        assignedEmployeeId = deptEmployees[0]?.id ?? null;
+      }
+
       const task = await this.taskRepo.save({
         projectId: req.body.projectId,
         departmentId: req.body.departmentId,
-        assignedEmployeeId: req.body.assignedEmployeeId ?? null,
+        assignedEmployeeId,
         title: req.body.title,
         description: req.body.description,
         taskType: req.body.taskType,
@@ -178,6 +184,25 @@ export class OsController {
       const id = getRequiredParam(req, 'id');
       const data = await this.taskRepo.getLogs(id);
       res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  agentLiveActivity = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const runningTasks = await this.taskRepo.findRunningTasks();
+      const recentLogs = await this.taskRepo.getRecentLogs(50);
+      const recentTasks = await this.taskRepo.findAll();
+
+      res.status(STATUS_CODE.OK).json({
+        success: true,
+        data: {
+          runningTasks,
+          recentLogs,
+          recentTasks: recentTasks.slice(0, 15),
+        },
+      });
     } catch (err) {
       next(err);
     }

@@ -8,6 +8,7 @@ import { Badge, statusTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { LiveCompanyFlowVisualizer } from "@/components/domain/LiveCompanyFlowVisualizer";
 import { useApiQuery } from "@/hooks/useApi";
 import { useDomainSocket } from "@/hooks/useDomainSocket";
 import { codynexApi } from "@/lib/codynexOs";
@@ -91,6 +92,8 @@ export default function OverviewPage() {
                   </div>
                 </Card>
               )}
+
+              <LiveCompanyFlowVisualizer />
 
               <div className="grid gap-6 lg:grid-cols-2">
                 <Card>

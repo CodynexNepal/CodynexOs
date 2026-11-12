@@ -11,6 +11,7 @@ import { compressionMiddleware } from '../middleware/compression.middleware';
 import { metricsHandler, metricsMiddleware } from '../observability/metrics';
 import { AppDataSource } from '../database/database-source';
 import { AiHealthService } from '../ai/services/ai-health.service';
+import { previewDeployService } from '../services/preview-deploy.service';
 
 export const createApp = (): Express => {
   const app = express();
@@ -53,6 +54,23 @@ export const createApp = (): Express => {
       next(err);
     }
   });
+
+  const serveLiveApp = (req: express.Request, res: express.Response) => {
+    const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
+    const html = previewDeployService.readPreview(projectId);
+    if (!html) {
+      res.status(404).send('<html><body style="font-family:sans-serif;padding:40px"><h2>Preview not ready yet</h2><p>UI/UX department has not published a live build for this project yet.</p></body></html>');
+      return;
+    }
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self' 'unsafe-inline' https: data:; frame-ancestors 'self' http://localhost:3000 http://127.0.0.1:3000;",
+    );
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.status(200).send(html);
+  };
+  app.get('/preview/:projectId', serveLiveApp);
+  app.get('/live/:projectId', serveLiveApp);
 
   app.use('/api/v1/codynex', createRootRoutes());
 

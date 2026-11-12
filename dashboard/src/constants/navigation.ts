@@ -64,7 +64,7 @@ export const OS_NAVIGATION: NavGroup[] = [
       { label: "GitHub Integration", href: "/github", icon: GitBranch },
       { label: "Code Review", href: "/code-review", icon: GitPullRequest },
       { label: "Testing Center", href: "/testing", icon: ShieldCheck },
-      { label: "Deployment Center", href: "/deployments", icon: Rocket },
+      { label: "Approvals & Deploy", href: "/deployments", icon: Rocket },
     ],
   },
   {

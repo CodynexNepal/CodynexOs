@@ -120,6 +120,77 @@ describe('AI adapter model deprecation fallback & discovery', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('GroqAdapter recovers JSON from failed_generation on json_validate_failed', async () => {
+    vi.spyOn(runtimeSecrets, 'resolveRuntimeSecret').mockResolvedValue('test-groq-key');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'json_validate_failed',
+            message:
+              "Failed to generate JSON. Please adjust your prompt. See 'failed_generation' for more details.",
+            failed_generation: '<think>reasoning</think>\n```json\n{"summary":"recovered-ok"}\n```',
+          },
+        }),
+        { status: 400 },
+      ),
+    );
+
+    const adapter = new GroqAdapter();
+    const res = await adapter.complete({
+      systemPrompt: 'Summarize the task',
+      userPrompt: 'hello',
+      model: 'llama-3.1-8b-instant',
+      responseFormat: 'json',
+    });
+
+    expect(res.content).toBe('{"summary":"recovered-ok"}');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('GroqAdapter retries without response_format when json_validate_failed has unrecoverable output', async () => {
+    vi.spyOn(runtimeSecrets, 'resolveRuntimeSecret').mockResolvedValue('test-groq-key');
+
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'json_validate_failed',
+              message:
+                "Failed to generate JSON. Please adjust your prompt. See 'failed_generation' for more details.",
+              failed_generation: 'not json at all',
+            },
+          }),
+          { status: 400 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: '```json\n{"summary":"retried-ok"}\n```' } }],
+            usage: { prompt_tokens: 12, completion_tokens: 6 },
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const adapter = new GroqAdapter();
+    const res = await adapter.complete({
+      systemPrompt: 'Summarize',
+      userPrompt: 'hello',
+      model: 'llama-3.1-8b-instant',
+      responseFormat: 'json',
+    });
+
+    expect(res.content).toBe('{"summary":"retried-ok"}');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondCallBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    expect(secondCallBody.response_format).toBeUndefined();
+  });
+
   it('OpenAiAdapter resolves runtime secret openai_api_key and completes', async () => {
     vi.spyOn(runtimeSecrets, 'resolveRuntimeSecret').mockResolvedValue('sk-test-openai');
 
