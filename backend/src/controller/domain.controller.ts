@@ -86,9 +86,21 @@ export class DomainController {
     }
   };
 
-  probeGithub = async (_req: Request, res: Response, next: NextFunction) => {
+  probeGithub = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await this.engService.probeGithubToken();
+      const owner = typeof req.query.owner === 'string' ? req.query.owner : undefined;
+      const repo = typeof req.query.repo === 'string' ? req.query.repo : undefined;
+      const data = await this.engService.probeGithubToken({ owner, repo });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  diagnoseRepo = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.engService.diagnoseRepositoryById(id);
       res.status(STATUS_CODE.OK).json({ success: true, data });
     } catch (err) {
       next(err);

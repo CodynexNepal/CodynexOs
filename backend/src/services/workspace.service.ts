@@ -48,7 +48,7 @@ export class WorkspaceService {
         '-c',
         'credential.helper=',
         '-c',
-        `http.extraheader=AUTHORIZATION: basic ${basic}`,
+        `http.extraheader=Authorization: Basic ${basic}`,
       );
     }
 
@@ -61,13 +61,24 @@ export class WorkspaceService {
       });
       return { stdout: result.stdout, stderr: result.stderr };
     } catch (err: any) {
-      const stderr = String(err?.stderr || err?.message || 'Git command failed').replace(
-        /basic\s+[A-Za-z0-9+/=]+/gi,
-        'basic [REDACTED]',
-      );
+      const stderr = String(err?.stderr || err?.stdout || err?.message || 'Git command failed')
+        .replace(/basic\s+[A-Za-z0-9+/=]+/gi, 'basic [REDACTED]')
+        .replace(/github_pat_[A-Za-z0-9_]+/gi, 'github_pat_[REDACTED]')
+        .replace(/ghp_[A-Za-z0-9_]+/gi, 'ghp_[REDACTED]');
+
       if (/403|Permission to .* denied/i.test(stderr)) {
         throw ApiError.forbidden(
-          `GitHub denied push/write access (403). Verify your GITHUB_TOKEN has 'repo' scope (classic PAT) or 'Contents: Read & Write' + 'Pull requests: Read & Write' (fine-grained PAT) for this repository. Details: ${stderr}`,
+          `[CONTENTS_WRITE_PERMISSION_MISSING] GitHub denied push/write access (HTTP 403). Verify that your Fine-Grained PAT has 'Contents: Read & write' and 'Pull requests: Read & write' permissions, or that your Classic PAT has 'repo' scope. Details: ${stderr}`,
+        );
+      }
+      if (/protected branch|branch protection/i.test(stderr)) {
+        throw ApiError.forbidden(
+          `[BRANCH_PROTECTION_RESTRICTION] GitHub rejected push due to branch protection rules: ${stderr}`,
+        );
+      }
+      if (/\[rejected\]|non-fast-forward|fetch first/i.test(stderr)) {
+        throw ApiError.conflict(
+          `[GIT_PUSH_REJECTED] GitHub rejected push because remote branch contains work that you do not have locally (non-fast-forward). Fetch and rebase before pushing: ${stderr}`,
         );
       }
       throw new Error(stderr, { cause: err });
@@ -224,12 +235,27 @@ export class WorkspaceService {
       throw ApiError.forbidden('Direct push to the production/default branch is prohibited.');
     }
     const repoDir = this.getRepoDir(params.owner, params.name);
+
+    // Fetch latest remote refs first to ensure we have the up-to-date tracking information
+    await this.runGit(repoDir, ['fetch', 'origin'], params.token).catch(() => {});
+
     await this.checkoutBranch(params.owner, params.name, clean, params.defaultBranch);
     await this.runGit(repoDir, ['add', '-A']);
 
     const status = await this.runGit(repoDir, ['status', '--porcelain']);
     if (status.stdout.trim()) {
       await this.runGit(repoDir, ['commit', '-m', params.commitMessage]);
+    }
+
+    // Check if remote branch already exists to pull/rebase cleanly before pushing
+    const remoteBranches = await this.runGit(repoDir, [
+      'branch',
+      '-r',
+      '--list',
+      `origin/${clean}`,
+    ]).catch(() => ({ stdout: '' }));
+    if (remoteBranches.stdout.trim()) {
+      await this.runGit(repoDir, ['pull', '--rebase', 'origin', clean], params.token).catch(() => {});
     }
 
     const shaRes = await this.runGit(repoDir, ['rev-parse', 'HEAD']);

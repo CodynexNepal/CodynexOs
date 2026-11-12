@@ -87,7 +87,9 @@ export const codynexApi = {
   },
   github: {
     repos: () => api.get("/github/repos"),
-    probe: () => api.get("/github/probe"),
+    probe: (params?: { owner?: string; repo?: string }) =>
+      api.get("/github/probe", { params }),
+    diagnoseRepo: (id: string) => api.get(`/github/repos/${id}/diagnostic`),
     connectRepo: (body: {
       owner: string;
       name: string;

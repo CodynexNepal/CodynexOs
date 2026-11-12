@@ -5,6 +5,12 @@ import { OrganizationRepository } from '../repository/organization.repository';
 import { GovernanceRepository } from '../repository/governance.repository';
 import { ApiError } from '../utils/api-error.util';
 import { ApprovalStatus, QaVerdict, TaskStatus } from '../constant/enum.constant';
+import {
+  GithubDiagnosticCode,
+  GithubConnectionDiagnostic,
+  RepositoryDiagnosticResult,
+  GithubTokenType,
+} from '../constant/github-diagnostic.constant';
 import { AuditService } from './audit.service';
 import { resolveRuntimeSecret } from './runtime-secrets.service';
 import { WorkspaceService } from './workspace.service';
@@ -47,24 +53,248 @@ export class EngineeringService {
     return this.engRepo.findAllQaReports();
   }
 
-  async probeGithubToken() {
+  async diagnoseRepository(
+    owner: string,
+    name: string,
+    explicitToken?: string,
+  ): Promise<RepositoryDiagnosticResult> {
+    const token = explicitToken || (await resolveRuntimeSecret('github_token'));
+    const cleanOwner = owner.trim();
+    const cleanName = name.trim();
+
+    if (!token) {
+      return {
+        owner: cleanOwner,
+        name: cleanName,
+        exists: false,
+        isPrivate: false,
+        defaultBranch: 'main',
+        hasAccess: false,
+        hasPushPermission: false,
+        effectiveWriteAuthorized: false,
+        diagnosticCode: GithubDiagnosticCode.TOKEN_NOT_CONFIGURED,
+        failureReason: 'GitHub token is not configured in environment or settings.',
+        correctiveAction: 'Configure GITHUB_TOKEN in backend/.env or via Settings page.',
+      };
+    }
+
+    const tokenType: GithubTokenType = token.startsWith('github_pat_')
+      ? 'fine-grained'
+      : token.startsWith('ghp_')
+        ? 'classic'
+        : 'none';
+
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'CodyNex-OS',
+      Authorization: `Bearer ${token}`,
+    };
+
+    const repoRes = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(cleanOwner)}/${encodeURIComponent(cleanName)}`,
+      { headers },
+    );
+
+    if (repoRes.status === 404) {
+      return {
+        owner: cleanOwner,
+        name: cleanName,
+        exists: false,
+        isPrivate: false,
+        defaultBranch: 'main',
+        hasAccess: false,
+        hasPushPermission: false,
+        effectiveWriteAuthorized: false,
+        diagnosticCode: GithubDiagnosticCode.REPOSITORY_NOT_FOUND,
+        failureReason: `Repository '${cleanOwner}/${cleanName}' not found or token has no read access to it.`,
+        correctiveAction:
+          'Verify repository name and ensure the Personal Access Token includes this repository under "Repository access".',
+      };
+    }
+
+    if (repoRes.status === 401) {
+      return {
+        owner: cleanOwner,
+        name: cleanName,
+        exists: false,
+        isPrivate: false,
+        defaultBranch: 'main',
+        hasAccess: false,
+        hasPushPermission: false,
+        effectiveWriteAuthorized: false,
+        diagnosticCode: GithubDiagnosticCode.TOKEN_INVALID,
+        failureReason: 'GitHub token rejected (HTTP 401 Unauthorized). Token may be invalid or expired.',
+        correctiveAction: 'Generate a fresh GitHub Personal Access Token and update GITHUB_TOKEN.',
+      };
+    }
+
+    if (repoRes.status === 403) {
+      const errBody = (await repoRes.json().catch(() => ({}))) as { message?: string };
+      const msg = errBody.message || '';
+      const isOrgApproval = /organization|saml|sso|approval/i.test(msg);
+      return {
+        owner: cleanOwner,
+        name: cleanName,
+        exists: false,
+        isPrivate: false,
+        defaultBranch: 'main',
+        hasAccess: false,
+        hasPushPermission: false,
+        effectiveWriteAuthorized: false,
+        diagnosticCode: isOrgApproval
+          ? GithubDiagnosticCode.ORGANIZATION_APPROVAL_REQUIRED
+          : GithubDiagnosticCode.REPOSITORY_ACCESS_DENIED,
+        failureReason: msg || 'Access to repository is forbidden (HTTP 403).',
+        correctiveAction: isOrgApproval
+          ? 'Authorize the PAT for SAML SSO or obtain organization owner approval.'
+          : 'Grant repository permissions to your token in GitHub Developer settings.',
+      };
+    }
+
+    if (!repoRes.ok) {
+      return {
+        owner: cleanOwner,
+        name: cleanName,
+        exists: false,
+        isPrivate: false,
+        defaultBranch: 'main',
+        hasAccess: false,
+        hasPushPermission: false,
+        effectiveWriteAuthorized: false,
+        diagnosticCode: GithubDiagnosticCode.REPOSITORY_ACCESS_DENIED,
+        failureReason: `GitHub returned HTTP ${repoRes.status} when accessing repository.`,
+        correctiveAction: 'Verify GitHub repository permissions.',
+      };
+    }
+
+    const repoData = (await repoRes.json()) as {
+      private?: boolean;
+      default_branch?: string;
+      permissions?: { admin?: boolean; push?: boolean; pull?: boolean };
+    };
+
+    const isPrivate = Boolean(repoData.private);
+    const defaultBranch = repoData.default_branch || 'main';
+    const accountPushAllowed = Boolean(repoData.permissions?.push);
+
+    let effectiveWrite: boolean;
+    let code = GithubDiagnosticCode.READY_FOR_PUSH;
+    let failureReason: string | null = null;
+    let correctiveAction: string | null = null;
+
+    if (tokenType === 'classic') {
+      const scopes = repoRes.headers.get('x-oauth-scopes') || '';
+      const hasRepoScope = /\brepo\b/.test(scopes) || (!isPrivate && /\bpublic_repo\b/.test(scopes));
+      if (!hasRepoScope || !accountPushAllowed) {
+        effectiveWrite = false;
+        code = GithubDiagnosticCode.CONTENTS_WRITE_PERMISSION_MISSING;
+        failureReason = `Classic PAT is missing 'repo' write scope (current scopes: '${scopes || 'none'}') or account lacks push permission.`;
+        correctiveAction =
+          "Generate a Classic PAT with the 'repo' (Full control of private repositories) scope enabled.";
+      } else {
+        effectiveWrite = true;
+      }
+    } else {
+      // Fine-grained PAT: Probe write capability via non-destructive ref probe
+      const probeRes = await fetch(
+        `https://api.github.com/repos/${encodeURIComponent(cleanOwner)}/${encodeURIComponent(cleanName)}/git/refs`,
+        {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ref: 'refs/heads/codynex-probe-dryrun',
+            sha: '0000000000000000000000000000000000000000',
+          }),
+        },
+      );
+
+      if (probeRes.status === 403) {
+        const probeBody = (await probeRes.json().catch(() => ({}))) as { message?: string };
+        const probeMsg = probeBody.message || '';
+        effectiveWrite = false;
+        if (/organization|saml|sso|approval/i.test(probeMsg)) {
+          code = GithubDiagnosticCode.ORGANIZATION_APPROVAL_REQUIRED;
+          failureReason = probeMsg;
+          correctiveAction = 'Authorize the PAT for SSO or request Organization Owner approval.';
+        } else {
+          code = GithubDiagnosticCode.CONTENTS_WRITE_PERMISSION_MISSING;
+          failureReason =
+            'Fine-grained PAT lacks "Contents: Read & write" permission for this repository.';
+          correctiveAction =
+            'In GitHub Developer Settings -> Personal access tokens (Fine-grained) -> Select Token -> Repository permissions -> Set "Contents" to "Read and write" and "Pull requests" to "Read and write".';
+        }
+      } else if (probeRes.status === 422) {
+        // HTTP 422 Unprocessable Entity means the token has contents:write permission and GitHub reached SHA validation
+        effectiveWrite = true;
+        code = GithubDiagnosticCode.READY_FOR_PUSH;
+      } else if (probeRes.status === 201) {
+        effectiveWrite = true;
+        code = GithubDiagnosticCode.READY_FOR_PUSH;
+        await fetch(
+          `https://api.github.com/repos/${encodeURIComponent(cleanOwner)}/${encodeURIComponent(cleanName)}/git/refs/heads/codynex-probe-dryrun`,
+          { method: 'DELETE', headers },
+        ).catch(() => {});
+      } else {
+        effectiveWrite = false;
+        code = GithubDiagnosticCode.REPOSITORY_ACCESS_DENIED;
+        failureReason = `Unexpected response HTTP ${probeRes.status} during write probe.`;
+        correctiveAction = 'Verify Fine-Grained PAT permissions in GitHub Settings.';
+      }
+    }
+
+    return {
+      owner: cleanOwner,
+      name: cleanName,
+      exists: true,
+      isPrivate,
+      defaultBranch,
+      hasAccess: true,
+      hasPushPermission: effectiveWrite,
+      effectiveWriteAuthorized: effectiveWrite,
+      diagnosticCode: code,
+      failureReason,
+      correctiveAction,
+    };
+  }
+
+  async diagnoseRepositoryById(repoId: string): Promise<RepositoryDiagnosticResult> {
+    const repo = await this.engRepo.findRepoById(repoId);
+    if (!repo) throw ApiError.notFound('Repository not found.');
+    const result = await this.diagnoseRepository(repo.owner, repo.name);
+    if (repo.isWriteAuthorized !== result.effectiveWriteAuthorized) {
+      repo.isWriteAuthorized = result.effectiveWriteAuthorized;
+      await this.engRepo.saveRepo(repo);
+    }
+    return result;
+  }
+
+  async probeGithubToken(target?: {
+    owner?: string;
+    repo?: string;
+  }): Promise<GithubConnectionDiagnostic> {
     const token = await resolveRuntimeSecret('github_token');
     if (!token) {
       return {
         configured: false,
-        ok: false,
+        authenticated: false,
+        authenticatedAccount: null,
         tokenType: 'none',
-        login: null as string | null,
-        scopes: '',
-        detail: 'GITHUB_TOKEN is not configured in .env or Settings.',
+        repositoryAccessStatus: 'NOT_TESTED',
+        repositoryWritePermission: false,
+        pushReadiness: false,
+        diagnosticCode: GithubDiagnosticCode.TOKEN_NOT_CONFIGURED,
+        failureReason: 'GITHUB_TOKEN is not configured in .env or Settings.',
+        recommendedAction: 'Add GITHUB_TOKEN to backend/.env or configure it via the Settings page.',
+        testedRepositories: [],
+        detail: 'GITHUB_TOKEN is not configured.',
       };
     }
 
-    const tokenType = token.startsWith('github_pat_')
+    const tokenType: GithubTokenType = token.startsWith('github_pat_')
       ? 'fine-grained'
       : token.startsWith('ghp_')
         ? 'classic'
-        : 'unknown';
+        : 'none';
 
     const res = await fetch('https://api.github.com/user', {
       headers: {
@@ -75,33 +305,127 @@ export class EngineeringService {
     });
 
     const scopes = res.headers.get('x-oauth-scopes') || '';
-    const body = (await res.json().catch(() => ({}))) as { login?: string; message?: string };
+    const body = (await res.json().catch(() => ({}))) as {
+      login?: string;
+      type?: 'User' | 'Organization';
+      message?: string;
+    };
 
     if (!res.ok) {
       return {
         configured: true,
-        ok: false,
+        authenticated: false,
+        authenticatedAccount: body.login ?? null,
         tokenType,
-        login: body.login ?? null,
-        scopes,
-        detail:
-          body.message ||
-          `GitHub returned HTTP ${res.status}. ${tokenType === 'fine-grained' ? 'Ensure Fine-Grained PAT has Account/Repository permissions enabled.' : 'Ensure Classic PAT is valid with repo scope.'}`,
+        tokenScopes: scopes,
+        repositoryAccessStatus: 'DENIED',
+        repositoryWritePermission: false,
+        pushReadiness: false,
+        diagnosticCode: GithubDiagnosticCode.TOKEN_INVALID,
+        failureReason: body.message
+          ? `${body.message} (HTTP ${res.status})`
+          : `GitHub returned HTTP ${res.status}. Token is invalid or expired.`,
+        recommendedAction:
+          tokenType === 'fine-grained'
+            ? 'Ensure Fine-Grained PAT is valid and active in GitHub Developer Settings.'
+            : "Ensure Classic PAT is valid and has 'repo' scope.",
+        testedRepositories: [],
+        detail: body.message || `GitHub returned HTTP ${res.status} Unauthorized.`,
       };
     }
 
-    const hasRepoScope =
-      tokenType === 'classic' ? /\brepo\b/.test(scopes) : true;
+    const authenticatedAccount = body.login || 'unknown';
+
+    const reposToTest: Array<{ owner: string; name: string }> = [];
+    if (target?.owner && target?.repo) {
+      reposToTest.push({ owner: target.owner, name: target.repo });
+    } else {
+      const connected = await this.engRepo.findAllRepos();
+      if (connected.length > 0) {
+        for (const c of connected.slice(0, 5)) {
+          reposToTest.push({ owner: c.owner, name: c.name });
+        }
+      }
+    }
+
+    const testedRepositories: RepositoryDiagnosticResult[] = [];
+    for (const r of reposToTest) {
+      const diag = await this.diagnoseRepository(r.owner, r.name, token);
+      testedRepositories.push(diag);
+
+      const dbRepo = await this.engRepo.findRepoByOwnerName(r.owner, r.name);
+      if (dbRepo && dbRepo.isWriteAuthorized !== diag.effectiveWriteAuthorized) {
+        dbRepo.isWriteAuthorized = diag.effectiveWriteAuthorized;
+        await this.engRepo.saveRepo(dbRepo);
+      }
+    }
+
+    let repoAccessStatus: 'FULL' | 'PARTIAL' | 'DENIED' | 'NOT_TESTED';
+    let repoWritePermission: boolean;
+    let pushReadiness: boolean;
+    let overallCode = GithubDiagnosticCode.READY_FOR_PUSH;
+    let failureReason: string | null = null;
+    let recommendedAction: string | null = null;
+
+    if (testedRepositories.length > 0) {
+      const hasAnyAccess = testedRepositories.some((r) => r.hasAccess);
+      const allAccess = testedRepositories.every((r) => r.hasAccess);
+      const allWrite = testedRepositories.every((r) => r.effectiveWriteAuthorized);
+      const hasAnyWrite = testedRepositories.some((r) => r.effectiveWriteAuthorized);
+
+      repoAccessStatus = allAccess ? 'FULL' : hasAnyAccess ? 'PARTIAL' : 'DENIED';
+      repoWritePermission = hasAnyWrite;
+      pushReadiness = allWrite;
+
+      if (!pushReadiness) {
+        const failing = testedRepositories.find((r) => !r.effectiveWriteAuthorized) ?? testedRepositories[0];
+        if (failing) {
+          overallCode = failing.diagnosticCode;
+          failureReason = failing.failureReason;
+          recommendedAction = failing.correctiveAction;
+        }
+      }
+    } else {
+      repoAccessStatus = 'NOT_TESTED';
+      if (tokenType === 'classic') {
+        const hasRepo = /\brepo\b/.test(scopes);
+        repoWritePermission = hasRepo;
+        pushReadiness = hasRepo;
+        if (!hasRepo) {
+          overallCode = GithubDiagnosticCode.CONTENTS_WRITE_PERMISSION_MISSING;
+          failureReason = "Classic PAT is missing 'repo' write scope.";
+          recommendedAction = "Regenerate Classic PAT with 'repo' scope.";
+        }
+      } else {
+        repoWritePermission = false;
+        pushReadiness = false;
+        overallCode = GithubDiagnosticCode.CONTENTS_WRITE_PERMISSION_MISSING;
+        failureReason =
+          'Fine-Grained PAT authenticated, but repository write permission is unverified or missing "Contents: Read & write".';
+        recommendedAction =
+          'Ensure Fine-Grained PAT has "Contents: Read and write" and "Pull requests: Read and write" in GitHub Developer Settings.';
+      }
+    }
+
+    const detail = pushReadiness
+      ? `Authenticated as ${authenticatedAccount} (${tokenType}). Write permission verified.`
+      : `Authenticated as ${authenticatedAccount} (${tokenType}), but push/write authorization failed: ${failureReason || overallCode}`;
 
     return {
       configured: true,
-      ok: hasRepoScope,
+      authenticated: true,
+      authenticatedAccount,
+      accountType: body.type,
       tokenType,
-      login: body.login ?? null,
-      scopes: scopes || (tokenType === 'fine-grained' ? 'fine-grained (check UI permissions)' : ''),
-      detail: hasRepoScope
-        ? `Authenticated as ${body.login ?? 'GitHub user'}${tokenType === 'fine-grained' ? ' (Fine-Grained PAT — ensure Contents, Pull requests, and Administration are Read & Write)' : ` (scopes: ${scopes})`}`
-        : `Authenticated as ${body.login ?? 'GitHub user'}, but Classic PAT is missing 'repo' write scope (current scopes: ${scopes || 'none'}).`,
+      tokenScopes: scopes,
+      repositoryAccessStatus: repoAccessStatus,
+      repositoryWritePermission: repoWritePermission,
+      pushReadiness,
+      diagnosticCode: overallCode,
+      failureReason,
+      recommendedAction,
+      testedRepositories,
+      detail,
     };
   }
 
@@ -193,13 +517,14 @@ export class EngineeringService {
     const imported: Array<{ id: string; owner: string; name: string; defaultBranch: string }> = [];
     for (const r of remoteRepos) {
       const rOwner = r.owner?.login || cleanOwner;
+      const hasPush = Boolean((r as any).permissions?.push);
       let existing = await this.engRepo.findRepoByOwnerName(rOwner, r.name);
       if (!existing) {
         existing = await this.engRepo.saveRepo({
           owner: rOwner,
           name: r.name,
           defaultBranch: r.default_branch || 'main',
-          isWriteAuthorized: Boolean(headers.Authorization),
+          isWriteAuthorized: hasPush,
           lastSyncedAt: new Date(),
         });
       }
@@ -748,7 +1073,15 @@ export class EngineeringService {
       }),
     });
     if (!createRefRes.ok && createRefRes.status !== 422) {
-      throw ApiError.badRequest(`Failed to create branch '${cleanBranch}' on GitHub.`);
+      const err = (await createRefRes.json().catch(() => ({}))) as { message?: string };
+      if (createRefRes.status === 403) {
+        throw ApiError.forbidden(
+          `[CONTENTS_WRITE_PERMISSION_MISSING] GitHub denied branch creation (HTTP 403: ${err.message || 'Resource not accessible by personal access token'}). Fine-Grained PAT requires 'Contents: Read & write' permission for ${repo.owner}/${repo.name}.`,
+        );
+      }
+      throw ApiError.badRequest(
+        `Failed to create branch '${cleanBranch}' on GitHub (${err.message || `HTTP ${createRefRes.status}`}).`,
+      );
     }
 
     if (params.filePath && params.fileContent !== undefined) {
@@ -766,7 +1099,15 @@ export class EngineeringService {
         }),
       });
       if (!putRes.ok) {
-        throw ApiError.badRequest(`Failed to commit '${params.filePath}' on branch '${cleanBranch}'.`);
+        const err = (await putRes.json().catch(() => ({}))) as { message?: string };
+        if (putRes.status === 403) {
+          throw ApiError.forbidden(
+            `[CONTENTS_WRITE_PERMISSION_MISSING] GitHub denied file commit (HTTP 403: ${err.message || 'Resource not accessible by personal access token'}). Fine-Grained PAT requires 'Contents: Read & write' permission for ${repo.owner}/${repo.name}.`,
+          );
+        }
+        throw ApiError.badRequest(
+          `Failed to commit '${params.filePath}' on branch '${cleanBranch}' (${err.message || `HTTP ${putRes.status}`}).`,
+        );
       }
     }
 
@@ -782,7 +1123,15 @@ export class EngineeringService {
     });
 
     if (!prRes.ok) {
-      throw ApiError.badRequest(`Failed to open Pull Request on GitHub (HTTP ${prRes.status}).`);
+      const err = (await prRes.json().catch(() => ({}))) as { message?: string };
+      if (prRes.status === 403) {
+        throw ApiError.forbidden(
+          `[PULL_REQUESTS_WRITE_PERMISSION_MISSING] GitHub denied PR creation (HTTP 403: ${err.message || 'Resource not accessible by personal access token'}). Fine-Grained PAT requires 'Pull requests: Read & write' permission.`,
+        );
+      }
+      throw ApiError.badRequest(
+        `Failed to open Pull Request on GitHub (HTTP ${prRes.status}: ${err.message || ''}).`,
+      );
     }
 
     const prJson = (await prRes.json()) as {

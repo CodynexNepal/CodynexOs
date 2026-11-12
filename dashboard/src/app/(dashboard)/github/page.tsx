@@ -4,17 +4,22 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import {
+  AlertTriangle,
+  CheckCircle2,
   Download,
   FileCode2,
   Folder,
   FolderGit2,
   GitBranch,
   GitPullRequest,
+  Key,
   Play,
   Plus,
   RefreshCw,
   Save,
+  ShieldAlert,
   UploadCloud,
+  XCircle,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -42,6 +47,37 @@ interface WorkspaceState {
   cloned: boolean;
   entries: Array<{ name: string; path: string; type: "file" | "dir"; size?: number }>;
   gitState: { branch: string; status: string; diff: string };
+}
+
+interface RepositoryDiagnostic {
+  owner: string;
+  name: string;
+  exists: boolean;
+  isPrivate: boolean;
+  defaultBranch: string;
+  hasAccess: boolean;
+  hasPushPermission: boolean;
+  effectiveWriteAuthorized: boolean;
+  diagnosticCode: string;
+  failureReason: string | null;
+  correctiveAction: string | null;
+}
+
+interface GithubDiagnosticState {
+  configured: boolean;
+  authenticated: boolean;
+  authenticatedAccount: string | null;
+  accountType?: "User" | "Organization";
+  tokenType: string;
+  tokenScopes?: string;
+  repositoryAccessStatus: "FULL" | "PARTIAL" | "DENIED" | "NOT_TESTED";
+  repositoryWritePermission: boolean;
+  pushReadiness: boolean;
+  diagnosticCode: string;
+  failureReason: string | null;
+  recommendedAction: string | null;
+  testedRepositories: RepositoryDiagnostic[];
+  detail: string;
 }
 
 export default function GithubPage() {
@@ -73,13 +109,7 @@ export default function GithubPage() {
   } | null>(null);
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [probeResult, setProbeResult] = useState<{
-    configured: boolean;
-    ok: boolean;
-    tokenType: string;
-    login: string | null;
-    detail: string;
-  } | null>(null);
+  const [probeResult, setProbeResult] = useState<GithubDiagnosticState | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
 
@@ -116,7 +146,30 @@ export default function GithubPage() {
     setActionErr(null);
     try {
       const res = await codynexApi.github.probe();
-      setProbeResult(unwrap(res.data));
+      const diag = unwrap<GithubDiagnosticState>(res.data);
+      setProbeResult(diag);
+      refetch();
+    } catch (err) {
+      setActionErr(toApiError(err).message);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleDiagnoseRepo = async (repoId: string) => {
+    setBusyAction(`diag-${repoId}`);
+    setActionErr(null);
+    try {
+      const res = await codynexApi.github.diagnoseRepo(repoId);
+      const diag = unwrap<RepositoryDiagnostic>(res.data);
+      if (diag.effectiveWriteAuthorized) {
+        setActionMsg(`✓ Verified Write & Push authorization for ${diag.owner}/${diag.name}.`);
+      } else {
+        setActionErr(
+          `[${diag.diagnosticCode}] ${diag.failureReason || "Write permission missing"}. Action: ${diag.correctiveAction}`
+        );
+      }
+      refetch();
     } catch (err) {
       setActionErr(toApiError(err).message);
     } finally {
@@ -335,15 +388,146 @@ export default function GithubPage() {
         </div>
 
         {probeResult && (
-          <div
-            className={`rounded-md border p-3 text-xs ${
-              probeResult.ok
-                ? "border-[#9FE870] bg-[#EAFCCB] text-[#14532D]"
-                : "border-amber-300 bg-amber-50 text-amber-950"
-            }`}
-          >
-            <strong>GitHub Token ({probeResult.tokenType}):</strong> {probeResult.detail}
-          </div>
+          <Card className="border border-surface-border p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border pb-3">
+              <div className="flex items-center gap-2">
+                <Key className="h-4 w-4 text-brand-ink" />
+                <h3 className="text-sm font-semibold text-ink">
+                  GitHub Integration & Permission Diagnostics
+                </h3>
+              </div>
+              <Badge tone={probeResult.pushReadiness ? "green" : "red"}>
+                {probeResult.pushReadiness ? "Push Ready" : "Push Blocked"}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 text-xs">
+              <div className="rounded-md border border-surface-border bg-surface-muted/40 p-2.5">
+                <span className="text-[10px] uppercase font-bold text-ink-muted">Authentication</span>
+                <div className="mt-1 flex items-center gap-1.5 font-semibold text-ink">
+                  {probeResult.authenticated ? (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Authenticated</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-3.5 w-3.5 text-rose-600" />
+                      <span>Failed</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-md border border-surface-border bg-surface-muted/40 p-2.5">
+                <span className="text-[10px] uppercase font-bold text-ink-muted">GitHub Account</span>
+                <div className="mt-1 font-semibold text-ink truncate">
+                  {probeResult.authenticatedAccount || "None"}
+                  {probeResult.tokenType && (
+                    <span className="ml-1 text-[10px] text-ink-muted font-normal">
+                      ({probeResult.tokenType})
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-md border border-surface-border bg-surface-muted/40 p-2.5">
+                <span className="text-[10px] uppercase font-bold text-ink-muted">Repository Access</span>
+                <div className="mt-1 font-semibold text-ink">
+                  {probeResult.repositoryAccessStatus}
+                </div>
+              </div>
+
+              <div className="rounded-md border border-surface-border bg-surface-muted/40 p-2.5">
+                <span className="text-[10px] uppercase font-bold text-ink-muted">Write Permission</span>
+                <div className="mt-1 flex items-center gap-1.5 font-semibold text-ink">
+                  {probeResult.repositoryWritePermission ? (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Authorized</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-3.5 w-3.5 text-amber-600" />
+                      <span>Missing</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-md border border-surface-border bg-surface-muted/40 p-2.5">
+                <span className="text-[10px] uppercase font-bold text-ink-muted">Push Readiness</span>
+                <div className="mt-1 flex items-center gap-1.5 font-semibold text-ink">
+                  {probeResult.pushReadiness ? (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Push Enabled</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldAlert className="h-3.5 w-3.5 text-rose-600" />
+                      <span>Blocked</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {!probeResult.pushReadiness && (
+              <div className="rounded-md border border-amber-200 bg-amber-50/70 p-3.5 text-xs text-amber-950 space-y-2">
+                <div className="flex items-center gap-2 font-bold text-amber-900">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                  <span>
+                    Authorization Required: [{probeResult.diagnosticCode}]
+                  </span>
+                </div>
+                {probeResult.failureReason && (
+                  <p className="text-[11px] leading-relaxed">
+                    <strong>Exact Reason:</strong> {probeResult.failureReason}
+                  </p>
+                )}
+                {probeResult.recommendedAction && (
+                  <div className="text-[11px] leading-relaxed border-t border-amber-200/80 pt-2 font-medium">
+                    <strong className="text-amber-900">Recommended Action:</strong>{" "}
+                    {probeResult.recommendedAction}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {probeResult.testedRepositories && probeResult.testedRepositories.length > 0 && (
+              <div className="space-y-2 pt-1 border-t border-surface-border">
+                <span className="text-[10px] uppercase font-bold text-ink-muted">
+                  Tested Repositories Write Diagnostics
+                </span>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {probeResult.testedRepositories.map((repoDiag) => (
+                    <div
+                      key={`${repoDiag.owner}/${repoDiag.name}`}
+                      className="rounded border border-surface-border bg-surface p-2.5 text-xs flex items-center justify-between"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="font-semibold text-ink truncate">
+                          {repoDiag.owner}/{repoDiag.name}
+                          {repoDiag.isPrivate && (
+                            <span className="ml-1 text-[10px] font-normal text-ink-muted">
+                              (private)
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-ink-muted">
+                          Code: <code>{repoDiag.diagnosticCode}</code>
+                        </div>
+                      </div>
+                      <Badge tone={repoDiag.effectiveWriteAuthorized ? "green" : "red"}>
+                        {repoDiag.effectiveWriteAuthorized ? "Push OK" : "Denied 403"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
         )}
 
         {!loading && (!data || data.length === 0) ? (
@@ -373,9 +557,22 @@ export default function GithubPage() {
                         base: <code>{repo.defaultBranch}</code> · {formatDateTime(repo.lastSyncedAt)}
                       </p>
                     </div>
-                    <Badge tone={repo.isWriteAuthorized ? "green" : "gray"}>
-                      {repo.isWriteAuthorized ? "Write" : "Read"}
-                    </Badge>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge tone={repo.isWriteAuthorized ? "green" : "gray"}>
+                        {repo.isWriteAuthorized ? "Write" : "Read"}
+                      </Badge>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDiagnoseRepo(repo.id);
+                        }}
+                        disabled={busyAction === `diag-${repo.id}`}
+                        className="text-[10px] text-brand-ink hover:underline font-medium"
+                      >
+                        {busyAction === `diag-${repo.id}` ? "Testing..." : "Test Write"}
+                      </button>
+                    </div>
                   </div>
                 </Card>
               );
