@@ -26,22 +26,30 @@ export class NotificationService {
     const channels: string[] = ['DASHBOARD'];
 
     if (params.sendExternal) {
-      const telegramToken = await resolveRuntimeSecret('telegram_bot_token');
-      const telegramChatId = await resolveRuntimeSecret('telegram_chat_id');
-      if (telegramToken && telegramChatId) {
+      const whatsappToken = await resolveRuntimeSecret('whatsapp_access_token');
+      const whatsappPhoneId = await resolveRuntimeSecret('whatsapp_phone_number_id');
+      const whatsappRecipient = await resolveRuntimeSecret('whatsapp_recipient_phone');
+      if (whatsappToken && whatsappPhoneId && whatsappRecipient) {
         try {
-          const url = `https://api.telegram.org/bot${telegramToken}/sendMessage`;
+          const url = `https://graph.facebook.com/v21.0/${encodeURIComponent(whatsappPhoneId)}/messages`;
           const res = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${whatsappToken}`,
+            },
             body: JSON.stringify({
-              chat_id: telegramChatId,
-              text: `[CodyNex OS · ${params.severity}] ${params.title}\n\n${params.message}`,
+              messaging_product: 'whatsapp',
+              to: whatsappRecipient,
+              type: 'text',
+              text: {
+                body: `[CodyNex OS · ${params.severity}] ${params.title}\n\n${params.message}`,
+              },
             }),
           });
-          if (res.ok) channels.push('TELEGRAM');
+          if (res.ok) channels.push('WHATSAPP');
         } catch (err) {
-          logger.warn('Telegram notification failed', {
+          logger.warn('WhatsApp notification failed', {
             error: err instanceof Error ? err.message : String(err),
           });
         }

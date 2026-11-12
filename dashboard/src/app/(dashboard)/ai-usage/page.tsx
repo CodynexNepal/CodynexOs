@@ -53,6 +53,7 @@ export default function AiUsagePage() {
   const [probeResult, setProbeResult] = useState<{
     gemini: { configured: boolean; ok: boolean; detail: string; activeModels: string[] };
     groq: { configured: boolean; ok: boolean; detail: string; activeModels: string[] };
+    ollama?: { configured: boolean; ok: boolean; detail: string; activeModels: string[] };
   } | null>(null);
 
   const handleProbe = async () => {
@@ -162,16 +163,20 @@ export default function AiUsagePage() {
             />
             {probeResult && (
               <div className="space-y-2 border-b border-surface-border bg-surface-muted px-5 py-3 text-xs">
-                {(["gemini", "groq"] as const).map((p) => (
-                  <div key={p} className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-bold uppercase text-ink">{p}</span>
-                    <div className="flex items-center gap-2">
-                      <Badge tone={probeResult[p].ok ? "green" : "amber"}>
-                        {probeResult[p].detail}
-                      </Badge>
+                {(["gemini", "groq", "ollama"] as const).map((p) => {
+                  const item = probeResult[p];
+                  if (!item) return null;
+                  return (
+                    <div key={p} className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-bold uppercase text-ink">{p}</span>
+                      <div className="flex items-center gap-2">
+                        <Badge tone={item.ok ? "green" : "amber"}>
+                          {item.detail}
+                        </Badge>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             <div className="divide-y divide-surface-border">

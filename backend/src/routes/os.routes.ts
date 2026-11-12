@@ -290,6 +290,7 @@ export function createOsRouter(): Router {
 
   router.get('/ai-usage', domainController.aiUsage);
   router.get('/ai-usage/probe', domainController.probeProviders);
+  router.get('/ai/health', domainController.aiHealth);
   router.put(
     '/ai-usage/budget',
     requireRoles(UserRole.CEO),

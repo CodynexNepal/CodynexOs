@@ -22,12 +22,15 @@ export interface CleanEnvConfig {
   GROQ_MODEL: string;
   OLLAMA_BASE_URL: string;
   OLLAMA_MODEL: string;
+  OLLAMA_ENABLED: boolean;
+  OLLAMA_TIMEOUT_MS: number;
   OPENAI_API_KEY: string;
   OPENAI_MODEL: string;
   GITHUB_TOKEN: string;
   GITHUB_DEFAULT_OWNER: string;
-  TELEGRAM_BOT_TOKEN: string;
-  TELEGRAM_CHAT_ID: string;
+  WHATSAPP_ACCESS_TOKEN: string;
+  WHATSAPP_PHONE_NUMBER_ID: string;
+  WHATSAPP_RECIPIENT_PHONE: string;
   SMTP_HOST: string;
   SMTP_PORT: number;
   SMTP_SECURE: boolean;
@@ -67,6 +70,7 @@ export function cleanEnvConfig(): CleanEnvConfig {
   const saltRounds = parseInt(process.env.SALT_ROUNDS || '10', 10);
   const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
   const pollMs = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '5000', 10);
+  const ollamaTimeoutRaw = parseInt(process.env.OLLAMA_TIMEOUT_MS || '120000', 10);
 
   const defaultDb = isProd
     ? undefined
@@ -116,13 +120,16 @@ export function cleanEnvConfig(): CleanEnvConfig {
     GROQ_API_KEY: (process.env.GROQ_API_KEY || '').trim(),
     GROQ_MODEL: (process.env.GROQ_MODEL || 'llama-3.1-8b-instant').trim(),
     OLLAMA_BASE_URL: (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').trim(),
-    OLLAMA_MODEL: (process.env.OLLAMA_MODEL || 'llama3.2').trim(),
+    OLLAMA_MODEL: (process.env.OLLAMA_MODEL || 'qwen3:4b').trim(),
+    OLLAMA_ENABLED: process.env.OLLAMA_ENABLED !== 'false',
+    OLLAMA_TIMEOUT_MS: Number.isFinite(ollamaTimeoutRaw) && ollamaTimeoutRaw >= 1000 ? ollamaTimeoutRaw : 120000,
     OPENAI_API_KEY: (process.env.OPENAI_API_KEY || '').trim(),
     OPENAI_MODEL: (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim(),
     GITHUB_TOKEN: (process.env.GITHUB_TOKEN || '').trim(),
     GITHUB_DEFAULT_OWNER: (process.env.GITHUB_DEFAULT_OWNER || '').trim(),
-    TELEGRAM_BOT_TOKEN: (process.env.TELEGRAM_BOT_TOKEN || '').trim(),
-    TELEGRAM_CHAT_ID: (process.env.TELEGRAM_CHAT_ID || '').trim(),
+    WHATSAPP_ACCESS_TOKEN: (process.env.WHATSAPP_ACCESS_TOKEN || '').trim(),
+    WHATSAPP_PHONE_NUMBER_ID: (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim(),
+    WHATSAPP_RECIPIENT_PHONE: (process.env.WHATSAPP_RECIPIENT_PHONE || '').trim(),
     SMTP_HOST: (process.env.SMTP_HOST || '').trim(),
     SMTP_PORT: Number.isNaN(smtpPort) ? 587 : smtpPort,
     SMTP_SECURE: process.env.SMTP_SECURE === 'true',

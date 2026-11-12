@@ -530,6 +530,15 @@ export class DomainController {
     }
   };
 
+  aiHealth = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.getHealthReport();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   updateBudget = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const existing = await this.governanceRepo.findGlobalBudget();

@@ -10,8 +10,14 @@ export class AiUsageLogEntity {
   @Column({ name: 'task_id', type: 'uuid', nullable: true })
   taskId!: string | null;
 
+  @Column({ name: 'user_id', type: 'uuid', nullable: true })
+  userId!: string | null;
+
   @Column({ name: 'employee_id', type: 'uuid', nullable: true })
   employeeId!: string | null;
+
+  @Column({ name: 'request_id', type: 'varchar', length: 64, nullable: true })
+  requestId!: string | null;
 
   @Column({ type: 'varchar', length: 32 })
   provider!: string;
@@ -25,6 +31,9 @@ export class AiUsageLogEntity {
   @Column({ name: 'output_tokens', type: 'integer', default: 0 })
   outputTokens!: number;
 
+  @Column({ name: 'total_tokens', type: 'integer', default: 0 })
+  totalTokens!: number;
+
   @Column({
     name: 'estimated_cost_usd',
     type: 'numeric',
@@ -36,6 +45,9 @@ export class AiUsageLogEntity {
 
   @Column({ type: 'varchar', length: 24 })
   status!: AiUsageStatus;
+
+  @Column({ name: 'error_category', type: 'varchar', length: 32, nullable: true })
+  errorCategory!: string | null;
 
   @Column({ name: 'latency_ms', type: 'integer', nullable: true })
   latencyMs!: number | null;

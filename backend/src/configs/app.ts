@@ -10,6 +10,7 @@ import { errorHandler } from '../middleware/error-handler.middleware';
 import { compressionMiddleware } from '../middleware/compression.middleware';
 import { metricsHandler, metricsMiddleware } from '../observability/metrics';
 import { AppDataSource } from '../database/database-source';
+import { AiHealthService } from '../ai/services/ai-health.service';
 
 export const createApp = (): Express => {
   const app = express();
@@ -42,6 +43,16 @@ export const createApp = (): Express => {
   });
 
   app.get('/metrics', metricsHandler);
+
+  const aiHealthService = new AiHealthService();
+  app.get('/api/ai/health', async (_req, res, next) => {
+    try {
+      const report = await aiHealthService.getFullHealthReport();
+      res.status(report.status === 'healthy' ? 200 : 503).json({ success: true, data: report });
+    } catch (err) {
+      next(err);
+    }
+  });
 
   app.use('/api/v1/codynex', createRootRoutes());
 

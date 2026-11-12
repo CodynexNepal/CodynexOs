@@ -8,8 +8,9 @@ const SETTING_ENV_MAP: Record<string, string> = {
   groq_api_key: dotEnvConfig.GROQ_API_KEY,
   openai_api_key: dotEnvConfig.OPENAI_API_KEY,
   github_token: dotEnvConfig.GITHUB_TOKEN,
-  telegram_bot_token: dotEnvConfig.TELEGRAM_BOT_TOKEN,
-  telegram_chat_id: dotEnvConfig.TELEGRAM_CHAT_ID,
+  whatsapp_access_token: dotEnvConfig.WHATSAPP_ACCESS_TOKEN,
+  whatsapp_phone_number_id: dotEnvConfig.WHATSAPP_PHONE_NUMBER_ID,
+  whatsapp_recipient_phone: dotEnvConfig.WHATSAPP_RECIPIENT_PHONE,
 };
 
 export async function resolveRuntimeSecret(key: string): Promise<string> {

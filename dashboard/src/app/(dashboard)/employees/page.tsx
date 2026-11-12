@@ -136,15 +136,29 @@ export default function EmployeesPage() {
           {saveErr && <ErrorBanner message={saveErr} />}
           <div>
             <label className="mb-1.5 block text-[13px] font-medium text-ink">
-              Preferred Free Provider
+              Preferred AI Provider
             </label>
             <select
               value={preferredProvider}
-              onChange={(e) => setPreferredProvider(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setPreferredProvider(next);
+                if (next === "ollama" && !preferredModel.includes(":")) {
+                  setPreferredModel("llama3.2");
+                } else if (next === "gemini" && !preferredModel.startsWith("gemini")) {
+                  setPreferredModel("gemini-3.8-flash");
+                } else if (next === "groq" && preferredModel.startsWith("gemini")) {
+                  setPreferredModel("llama-3.1-8b-instant");
+                } else if (next === "openai" && !preferredModel.startsWith("gpt")) {
+                  setPreferredModel("gpt-4o-mini");
+                }
+              }}
               className="h-10 w-full rounded-md border border-surface-border bg-surface px-3 text-sm text-ink"
             >
               <option value="gemini">gemini (Free Tier)</option>
               <option value="groq">groq (Free Tier)</option>
+              <option value="ollama">ollama (Local Free)</option>
+              <option value="openai">openai (Paid · Requires Budget Policy)</option>
             </select>
           </div>
           <Input

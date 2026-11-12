@@ -75,10 +75,23 @@ export class GeminiAdapter implements AiProviderAdapter {
     const latencyMs = Date.now() - started;
 
     if (res.status === 429) {
+      const retryAfterRaw = res.headers?.get('retry-after');
+      const retryAfterSec = retryAfterRaw ? Number(retryAfterRaw) : NaN;
+      const retryAfterMs = Number.isFinite(retryAfterSec) ? retryAfterSec * 1000 : undefined;
       throw new AiProviderError(
         this.name,
         'RATE_LIMITED',
         'Gemini free-tier rate limit or daily quota reached (HTTP 429).',
+        { category: 'RATE_LIMIT', retryAfterMs, statusCode: 429 },
+      );
+    }
+
+    if (res.status === 401 || res.status === 403) {
+      throw new AiProviderError(
+        this.name,
+        'PROVIDER_ERROR',
+        `Gemini authentication/permission error (HTTP ${res.status}).`,
+        { category: 'AUTH', statusCode: res.status },
       );
     }
 

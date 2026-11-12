@@ -27,7 +27,7 @@ export default function SettingsPage() {
   const businessesQuery = useApiQuery<BusinessItem[]>(() => codynexApi.businesses.list());
   const emailAccountsQuery = useApiQuery<EmailAccountItem[]>(() => codynexApi.emailAccounts.list());
 
-  const [secretKey, setSecretKey] = useState("telegram_bot_token");
+  const [secretKey, setSecretKey] = useState("whatsapp_access_token");
   const [secretVal, setSecretVal] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -388,7 +388,9 @@ export default function SettingsPage() {
                   <option value="groq_api_key">groq_api_key</option>
                   <option value="openai_api_key">openai_api_key</option>
                   <option value="github_token">github_token</option>
-                  <option value="telegram_bot_token">telegram_bot_token</option>
+                  <option value="whatsapp_access_token">whatsapp_access_token</option>
+                  <option value="whatsapp_phone_number_id">whatsapp_phone_number_id</option>
+                  <option value="whatsapp_recipient_phone">whatsapp_recipient_phone</option>
                 </select>
               </div>
               <Input
