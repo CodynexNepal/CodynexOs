@@ -33,6 +33,7 @@ export class DomainController {
     }
   };
 
+
   createMemory = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.memoryRepo.saveMemory({
@@ -56,6 +57,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   createKnowledge = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -86,6 +88,7 @@ export class DomainController {
     }
   };
 
+
   probeGithub = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const owner = typeof req.query.owner === 'string' ? req.query.owner : undefined;
@@ -97,6 +100,7 @@ export class DomainController {
     }
   };
 
+
   diagnoseRepo = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -106,6 +110,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   connectRepo = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -132,6 +137,7 @@ export class DomainController {
     }
   };
 
+
   analyzeRepo = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -141,6 +147,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   createBranchPr = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -171,6 +178,7 @@ export class DomainController {
     }
   };
 
+
   createGithubRepo = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.engService.createGithubRepo({
@@ -196,6 +204,7 @@ export class DomainController {
     }
   };
 
+
   listWorkspaceFiles = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -207,6 +216,7 @@ export class DomainController {
     }
   };
 
+
   readWorkspaceFile = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -217,6 +227,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   writeWorkspaceFiles = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -233,6 +244,7 @@ export class DomainController {
     }
   };
 
+
   commitWorkspace = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -248,6 +260,22 @@ export class DomainController {
     }
   };
 
+  runWorkspaceTerminal = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const command = typeof req.body?.command === 'string' ? req.body.command : '';
+      const data = await this.engService.executeWorkspaceTerminal({
+        repoId: id,
+        command,
+        actorId: req.user!.userId,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+
   runWorkspaceChecks = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -258,6 +286,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   commitPushWorkspace = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -286,6 +315,7 @@ export class DomainController {
     }
   };
 
+
   syncAllPullRequests = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.engService.syncAllPullRequests(req.user!.userId);
@@ -295,6 +325,7 @@ export class DomainController {
     }
   };
 
+
   listQaReports = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.engService.listQaReports();
@@ -303,6 +334,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   createQaReport = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -330,6 +362,7 @@ export class DomainController {
     }
   };
 
+
   createCampaign = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.crmService.createCampaign(req.body, req.user!.userId);
@@ -350,6 +383,7 @@ export class DomainController {
     }
   };
 
+
   upsertLead = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.crmService.upsertLead(req.body, req.user!.userId);
@@ -369,6 +403,7 @@ export class DomainController {
     }
   };
 
+
   listInteractions = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const leadId = typeof req.query.leadId === 'string' ? req.query.leadId : undefined;
@@ -378,6 +413,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   draftLeadOutreach = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -405,6 +441,7 @@ export class DomainController {
     }
   };
 
+
   sendInteractionEmail = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -421,6 +458,7 @@ export class DomainController {
     }
   };
 
+
   listBusinesses = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.businessEmailService.listBusinesses();
@@ -429,6 +467,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   createBusiness = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -449,6 +488,7 @@ export class DomainController {
     }
   };
 
+
   listEmailAccounts = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : undefined;
@@ -458,6 +498,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   createEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -478,6 +519,7 @@ export class DomainController {
     }
   };
 
+
   deleteEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -487,6 +529,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   verifyEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -506,6 +549,7 @@ export class DomainController {
     }
   };
 
+
   updateLeadStage = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -521,6 +565,7 @@ export class DomainController {
     }
   };
 
+
   classifyReply = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -534,6 +579,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   aiUsage = async (_req: Request, res: Response, next: NextFunction) => {
     try {
@@ -557,6 +603,7 @@ export class DomainController {
     }
   };
 
+
   aiHealth = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.modelRouter.getHealthReport();
@@ -565,6 +612,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   updateBudget = async (req: Request, res: Response, next: NextFunction) => {
     try {

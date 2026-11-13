@@ -775,6 +775,44 @@ export class EngineeringService {
     };
   }
 
+  async executeWorkspaceTerminal(params: {
+    repoId: string;
+    command: string;
+    actorId: string;
+  }) {
+    const repo = await this.engRepo.findRepoById(params.repoId);
+    if (!repo) throw ApiError.notFound('Repository not found.');
+
+    const token = await resolveRuntimeSecret('github_token');
+    await this.workspaceService.ensureClonedOrPulled({
+      owner: repo.owner,
+      name: repo.name,
+      defaultBranch: repo.defaultBranch,
+      token: token || undefined,
+    });
+
+    const result = await this.workspaceService.executeTerminalCommand({
+      owner: repo.owner,
+      name: repo.name,
+      command: params.command,
+      token: token || undefined,
+    });
+
+    await this.auditService.log({
+      actorType: 'USER',
+      actorId: params.actorId,
+      action: 'WORKSPACE_TERMINAL_EXECUTED',
+      resourceType: 'github_repository',
+      resourceId: repo.id,
+      metadata: {
+        command: params.command.slice(0, 100),
+        exitCode: result.exitCode,
+      },
+    });
+
+    return result;
+  }
+
   async runWorkspaceChecks(repoId: string, taskId: string | undefined, actorId: string) {
     const repo = await this.engRepo.findRepoById(repoId);
     if (!repo) throw ApiError.notFound('Repository not found.');

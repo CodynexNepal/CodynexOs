@@ -328,4 +328,94 @@ describe('WorkspaceService security & folder isolation', () => {
     expect(rebaseAborted).toBe(true);
     await fs.rm(tmpRoot, { recursive: true, force: true });
   });
+
+  it('executes safe terminal git commands and rejects unauthorized programs', async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codynex-terminal-'));
+    const ws = new WorkspaceService(tmpRoot);
+
+    // Mock runGit
+    vi.spyOn(ws as any, 'runGit').mockImplementation(async (_cwd: string, args: string[]) => {
+      const cmd = args.join(' ');
+      if (cmd.includes('rev-parse --abbrev-ref HEAD')) {
+        return { stdout: 'codynex/feature-test\n', stderr: '' };
+      }
+      if (cmd.includes('status')) {
+        return { stdout: 'On branch codynex/feature-test\nnothing to commit\n', stderr: '' };
+      }
+      return { stdout: 'ok', stderr: '' };
+    });
+
+    // Test git status
+    const statusRes = await ws.executeTerminalCommand({
+      owner: 'CodynexNepal',
+      name: 'aliza-wears',
+      command: 'git status',
+    });
+    expect(statusRes.exitCode).toBe(0);
+    expect(statusRes.stdout).toContain('On branch codynex/feature-test');
+    expect(statusRes.branch).toBe('codynex/feature-test');
+
+    // Test unauthorized shell injection / executable
+    const unsafeRes = await ws.executeTerminalCommand({
+      owner: 'CodynexNepal',
+      name: 'aliza-wears',
+      command: 'powershell -c whoami',
+    });
+    expect(unsafeRes.exitCode).toBe(1);
+    expect(unsafeRes.stderr).toContain('not recognized');
+
+    // Test forbidden git subcommand
+    const forbiddenGit = await ws.executeTerminalCommand({
+      owner: 'CodynexNepal',
+      name: 'aliza-wears',
+      command: 'git format-patch HEAD~1',
+    });
+    expect(forbiddenGit.exitCode).toBe(1);
+    expect(forbiddenGit.stderr).toContain('is not permitted');
+
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('does not attempt branch -f on checked out feature branch in commitAndPushBranch', async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codynex-push-safe-'));
+    const ws = new WorkspaceService(tmpRoot);
+
+    const executedCommands: string[] = [];
+    vi.spyOn(ws as any, 'runGit').mockImplementation(async (_cwd: string, args: string[]) => {
+      const cmd = args.join(' ');
+      executedCommands.push(cmd);
+      if (cmd.includes('rev-parse --verify origin/main')) return { stdout: 'main-sha', stderr: '' };
+      if (cmd.includes('rev-parse --abbrev-ref HEAD')) return { stdout: 'codynex/feature-mwf2o49z\n', stderr: '' };
+      if (cmd.includes('log origin/main..main')) return { stdout: '846f0be accidental commit\n', stderr: '' };
+      if (cmd.includes('branch --list codynex/feature-mwf2o49z')) return { stdout: 'codynex/feature-mwf2o49z', stderr: '' };
+      if (cmd.includes('status --porcelain')) return { stdout: '', stderr: '' };
+      if (cmd.includes('log origin/main..HEAD')) return { stdout: 'commit1\n', stderr: '' };
+      if (cmd.includes('diff --name-only')) return { stdout: 'src/app.ts\n', stderr: '' };
+      if (cmd.includes('rev-parse HEAD')) return { stdout: 'sha123\n', stderr: '' };
+      if (cmd.includes('push')) return { stdout: 'Pushed', stderr: '' };
+      return { stdout: '', stderr: '' };
+    });
+
+    const result = await ws.commitAndPushBranch({
+      owner: 'CodynexNepal',
+      name: 'aliza-wears',
+      branchName: 'codynex/feature-mwf2o49z',
+      defaultBranch: 'main',
+      commitMessage: 'feat: push feature',
+      token: 'fake-token',
+    });
+
+    expect(result.branchName).toBe('codynex/feature-mwf2o49z');
+    // Ensure we NEVER ran "branch -f codynex/feature-mwf2o49z" which causes worktree collision
+    const collidedCommand = executedCommands.find((c) =>
+      c.includes('branch -f codynex/feature-mwf2o49z'),
+    );
+    expect(collidedCommand).toBeUndefined();
+
+    // Verify main was reset instead
+    const mainReset = executedCommands.find((c) => c.includes('branch -f main origin/main'));
+    expect(mainReset).toBeDefined();
+
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+  });
 });

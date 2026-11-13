@@ -122,6 +122,14 @@ export const codynexApi = {
       id: string,
       body: { branchName: string; commitMessage?: string }
     ) => api.post(`/github/repos/${id}/workspace/commit`, body),
+    workspaceTerminal: (
+      id: string,
+      body: { command: string }
+    ) =>
+      api.post<{ stdout: string; stderr: string; exitCode: number; branch: string }>(
+        `/github/repos/${id}/workspace/terminal`,
+        body
+      ),
     workspaceRunChecks: (id: string) => api.post(`/github/repos/${id}/workspace/checks`, {}),
     workspacePushPr: (
       id: string,
@@ -267,5 +275,47 @@ export const codynexApi = {
     list: () => api.get("/settings"),
     upsert: (body: { key: string; value: Record<string, unknown>; isSecret?: boolean }) =>
       api.put("/settings", body),
+  },
+  hr: {
+    overview: () => api.get("/hr/overview"),
+    contracts: () => api.get("/hr/contracts"),
+    getContract: (employeeId: string) => api.get(`/hr/contracts/${employeeId}`),
+    rules: () => api.get("/hr/rules"),
+    createRule: (body: {
+      ruleCode: string;
+      title: string;
+      description: string;
+      severity: string;
+      defaultPenaltyTokens?: number;
+      category?: string;
+    }) => api.post("/hr/rules", body),
+    updateRule: (
+      id: string,
+      body: {
+        title?: string;
+        description?: string;
+        severity?: string;
+        defaultPenaltyTokens?: number;
+        isActive?: boolean;
+      }
+    ) => api.patch(`/hr/rules/${id}`, body),
+    violations: () => api.get("/hr/violations"),
+    discipline: (body: {
+      employeeId: string;
+      ruleCode: string;
+      penaltyType: string;
+      tokenPenaltyAmount?: number;
+      explanation: string;
+      taskId?: string;
+    }) => api.post("/hr/violations/discipline", body),
+    pardon: (id: string, body?: { reason?: string }) =>
+      api.post(`/hr/violations/${id}/pardon`, body || {}),
+    transactions: () => api.get("/hr/tokens/transactions"),
+    grantTokens: (body: {
+      employeeId: string;
+      amount: number;
+      reason: string;
+      metadata?: Record<string, unknown>;
+    }) => api.post("/hr/tokens/grant", body),
   },
 };
