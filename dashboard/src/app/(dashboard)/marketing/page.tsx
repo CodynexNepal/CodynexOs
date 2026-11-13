@@ -232,7 +232,7 @@ export default function MarketingPage() {
       const res = await codynexApi.marketing.publishSocial({
         occasion: occ ? `${occ.name} (${occ.nepaliName})` : "Festive Dispatch",
         channels: targetChannels,
-        content: generatedContent,
+        content: generatedContent as unknown as Record<string, unknown>,
         businessId: selectedBizFilter || undefined,
       });
       setDispatchSuccess(res.data);
@@ -949,7 +949,7 @@ export default function MarketingPage() {
                     </div>
                     <div>
                       <span className="text-[11px] text-ink-muted">Reach / Followers:</span>
-                      <p className="font-bold text-xs text-ink">{acc.metadata?.followers ?? "Verified Account"}</p>
+                      <p className="font-bold text-xs text-ink">{String(acc.metadata?.followers ?? "Verified Account")}</p>
                     </div>
                   </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import {
@@ -15,6 +16,7 @@ import {
   GitCommit,
   GitPullRequest,
   Key,
+  MonitorPlay,
   Package,
   Play,
   Plus,
@@ -816,6 +818,13 @@ export default function GithubPage() {
                         <Play className="h-3.5 w-3.5" />
                         Run Tests
                       </Button>
+                      <Link
+                        href={`/frontend-preview`}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-brand bg-brand/15 text-brand-ink px-3 text-[13px] font-bold hover:bg-brand/25 transition-colors"
+                      >
+                        <MonitorPlay className="h-3.5 w-3.5" />
+                        Live Preview
+                      </Link>
                       <Button
                         variant="dark"
                         size="sm"

@@ -190,6 +190,12 @@ export function createOsRouter(): Router {
     requireParam('id', { uuid: true }),
     domainController.runWorkspaceChecks,
   );
+  router.get('/frontends', domainController.listFrontendWorkspaces);
+  router.get(
+    '/github/repos/:id/workspace/preview',
+    requireParam('id', { uuid: true }),
+    domainController.getWorkspacePreview,
+  );
   router.post(
     '/github/repos/:id/workspace/push-pr',
     requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),

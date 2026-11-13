@@ -12,6 +12,7 @@ import { metricsHandler, metricsMiddleware } from '../observability/metrics';
 import { AppDataSource } from '../database/database-source';
 import { AiHealthService } from '../ai/services/ai-health.service';
 import { previewDeployService } from '../services/preview-deploy.service';
+import { workspacePreviewService } from '../services/workspace-preview.service';
 
 export const createApp = (): Express => {
   const app = express();
@@ -69,6 +70,22 @@ export const createApp = (): Express => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.status(200).send(html);
   };
+
+  const serveWorkspaceLiveApp = (req: express.Request, res: express.Response) => {
+    const owner = typeof req.params.owner === 'string' ? req.params.owner : '';
+    const name = typeof req.params.name === 'string' ? req.params.name : '';
+    const route = typeof req.query.route === 'string' ? req.query.route : '/';
+
+    const html = workspacePreviewService.renderLivePreviewHtml(owner, name, route);
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self' 'unsafe-inline' https: data:; frame-ancestors 'self' http://localhost:3000 http://127.0.0.1:3000;",
+    );
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.status(200).send(html);
+  };
+
+  app.get('/preview/workspace/:owner/:name', serveWorkspaceLiveApp);
   app.get('/preview/:projectId', serveLiveApp);
   app.get('/live/:projectId', serveLiveApp);
 

@@ -136,8 +136,12 @@ export const codynexApi = {
       id: string,
       body: { branchName: string; title: string; commitMessage?: string; body?: string }
     ) => api.post(`/github/repos/${id}/workspace/push-pr`, body),
+    workspacePreview: (id: string) => api.get(`/github/repos/${id}/workspace/preview`),
     pullRequests: () => api.get("/github/pull-requests"),
     syncAllPullRequests: () => api.post("/github/pull-requests/sync"),
+  },
+  frontends: {
+    list: () => api.get("/frontends"),
   },
   qa: {
     reports: () => api.get("/qa/reports"),

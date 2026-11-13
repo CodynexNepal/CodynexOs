@@ -14,6 +14,7 @@ import {
 import { AuditService } from './audit.service';
 import { resolveRuntimeSecret } from './runtime-secrets.service';
 import { WorkspaceService } from './workspace.service';
+import { workspacePreviewService } from './workspace-preview.service';
 
 export class EngineeringService {
   private readonly workspaceService: WorkspaceService;
@@ -1443,5 +1444,11 @@ export class EngineeringService {
     });
 
     return report;
+  }
+
+  async getWorkspacePreviewInfo(repoId: string) {
+    const repo = await this.engRepo.findRepoById(repoId);
+    if (!repo) throw ApiError.notFound('Repository not found.');
+    return workspacePreviewService.getWorkspacePreviewInfo(repo.owner, repo.name);
   }
 }

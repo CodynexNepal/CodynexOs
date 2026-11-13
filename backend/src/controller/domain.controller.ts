@@ -7,6 +7,7 @@ import { ModelRouterService } from '../ai/router/model-router.service';
 import { AuditService } from '../services/audit.service';
 import { BusinessEmailService } from '../services/business-email.service';
 import { MarketingService } from '../services/marketing.service';
+import { workspacePreviewService } from '../services/workspace-preview.service';
 import { getRequiredParam } from '../decorators/http.decorator';
 import { STATUS_CODE } from '../constant/statusCode.interface';
 import { MemoryCategory, QaVerdict } from '../constant/enum.constant';
@@ -224,6 +225,25 @@ export class DomainController {
       const id = getRequiredParam(req, 'id');
       const filePath = typeof req.query.path === 'string' ? req.query.path : '';
       const data = await this.engService.readWorkspaceFile(id, filePath);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  listFrontendWorkspaces = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = workspacePreviewService.listAvailableFrontends();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getWorkspacePreview = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.engService.getWorkspacePreviewInfo(id);
       res.status(STATUS_CODE.OK).json({ success: true, data });
     } catch (err) {
       next(err);
