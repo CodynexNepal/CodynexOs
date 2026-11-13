@@ -13,6 +13,14 @@ export interface WorkspaceEntry {
   size?: number;
 }
 
+export interface BranchPushResult {
+  commitSha: string;
+  branchName: string;
+  commitsCount: number;
+  changedFiles: string[];
+  isInitialBootstrap?: boolean;
+}
+
 export class WorkspaceService {
   private readonly rootDir: string;
 
@@ -192,11 +200,50 @@ export class WorkspaceService {
       throw ApiError.forbidden('Cannot checkout or push directly to the protected default branch.');
     }
     const repoDir = this.getRepoDir(owner, name);
-    const { stdout } = await this.runGit(repoDir, ['branch', '--list', clean]);
-    if (stdout.trim()) {
-      await this.runGit(repoDir, ['checkout', clean]);
+
+    // Check whether repository has any commits at all (empty/unborn repo handling)
+    const hasCommits = await this.runGit(repoDir, ['rev-parse', '--verify', 'HEAD']).then(
+      () => true,
+      () => false,
+    );
+    if (!hasCommits) {
+      await this.runGit(repoDir, ['checkout', '-B', clean]);
+      return;
+    }
+
+    // Check current branch and dirty working tree status
+    const currentBranchRes = await this.runGit(repoDir, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(
+      () => ({ stdout: '' }),
+    );
+    const currentBranch = currentBranchRes.stdout.trim();
+    if (currentBranch === clean) {
+      return;
+    }
+
+    const statusRes = await this.runGit(repoDir, ['status', '--porcelain']).catch(() => ({ stdout: '' }));
+    const hasUncommitted = Boolean(statusRes.stdout.trim());
+
+    const { stdout: branchList } = await this.runGit(repoDir, ['branch', '--list', clean]);
+    const branchExists = Boolean(branchList.trim());
+
+    if (hasUncommitted) {
+      // Stash uncommitted changes to transfer them cleanly across branch checkout
+      await this.runGit(repoDir, ['stash', 'push', '-u', '-m', `codynex_transfer_${Date.now()}`]);
+      try {
+        if (branchExists) {
+          await this.runGit(repoDir, ['checkout', clean]);
+        } else {
+          await this.runGit(repoDir, ['checkout', '-b', clean]);
+        }
+      } finally {
+        await this.runGit(repoDir, ['stash', 'pop']).catch(() => {});
+      }
     } else {
-      await this.runGit(repoDir, ['checkout', '-b', clean]);
+      if (branchExists) {
+        await this.runGit(repoDir, ['checkout', clean]);
+      } else {
+        await this.runGit(repoDir, ['checkout', '-b', clean]);
+      }
     }
   }
 
@@ -222,6 +269,24 @@ export class WorkspaceService {
     };
   }
 
+  async stageAndCommit(
+    owner: string,
+    name: string,
+    branchName: string,
+    commitMessage: string,
+  ): Promise<{ committed: boolean; commitSha?: string }> {
+    const clean = branchName.trim();
+    const repoDir = this.getRepoDir(owner, name);
+    await this.runGit(repoDir, ['add', '-A']);
+    const status = await this.runGit(repoDir, ['status', '--porcelain']);
+    if (!status.stdout.trim()) {
+      return { committed: false };
+    }
+    await this.runGit(repoDir, ['commit', '-m', commitMessage || `chore: update ${clean}`]);
+    const sha = await this.runGit(repoDir, ['rev-parse', 'HEAD']);
+    return { committed: true, commitSha: sha.stdout.trim() };
+  }
+
   async commitAndPushBranch(params: {
     owner: string;
     name: string;
@@ -229,51 +294,140 @@ export class WorkspaceService {
     defaultBranch: string;
     commitMessage: string;
     token: string;
-  }): Promise<{ commitSha: string; branchName: string }> {
+  }): Promise<BranchPushResult> {
     const clean = params.branchName.trim();
     if (!clean || clean === params.defaultBranch || clean === 'main' || clean === 'master') {
       throw ApiError.forbidden('Direct push to the production/default branch is prohibited.');
     }
     const repoDir = this.getRepoDir(params.owner, params.name);
 
-    // Fetch latest remote refs first to ensure we have the up-to-date tracking information
-    await this.runGit(repoDir, ['fetch', 'origin'], params.token).catch(() => {});
+    // Fetch latest remote refs with retry to guarantee up-to-date tracking information
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        await this.runGit(repoDir, ['fetch', 'origin'], params.token);
+        break;
+      } catch {
+        // If fetch fails after retries, proceed with local refs
+      }
+    }
 
+    // Safely transfer any accidental commits from local default branch to feature branch
+    const hasDefaultRemote = await this.runGit(repoDir, [
+      'rev-parse',
+      '--verify',
+      `origin/${params.defaultBranch}`,
+    ]).then(
+      () => true,
+      () => false,
+    );
+
+    if (hasDefaultRemote) {
+      const defaultAhead = await this.runGit(repoDir, [
+        'log',
+        `origin/${params.defaultBranch}..${params.defaultBranch}`,
+        '--oneline',
+      ]).catch(() => ({ stdout: '' }));
+
+      if (defaultAhead.stdout.trim()) {
+        // Commits were accidentally committed to local default branch; transfer them to clean branch and reset default
+        await this.runGit(repoDir, ['branch', '-f', clean, params.defaultBranch]);
+        await this.runGit(repoDir, ['checkout', params.defaultBranch]);
+        await this.runGit(repoDir, ['reset', '--hard', `origin/${params.defaultBranch}`]);
+      }
+    }
+
+    // Switch to isolated feature branch
     await this.checkoutBranch(params.owner, params.name, clean, params.defaultBranch);
-    await this.runGit(repoDir, ['add', '-A']);
 
+    // Stage and commit all uncommitted changes
+    await this.runGit(repoDir, ['add', '-A']);
     const status = await this.runGit(repoDir, ['status', '--porcelain']);
     if (status.stdout.trim()) {
       await this.runGit(repoDir, ['commit', '-m', params.commitMessage]);
     }
 
-    // Check if remote branch already exists to pull/rebase cleanly before pushing
+    // Handle empty remote repository bootstrap
+    let isInitialBootstrap = false;
+    if (!hasDefaultRemote) {
+      const hasLocalCommits = await this.runGit(repoDir, ['rev-parse', '--verify', 'HEAD']).then(
+        () => true,
+        () => false,
+      );
+      if (!hasLocalCommits) {
+        throw ApiError.badRequest(
+          `Repository '${params.owner}/${params.name}' is empty and no files were committed. Please create files in the workspace before pushing.`,
+        );
+      }
+      // Initialize remote default branch with initial commit so base branch exists on GitHub
+      await this.runGit(repoDir, ['push', '-u', 'origin', `HEAD:${params.defaultBranch}`], params.token);
+      isInitialBootstrap = true;
+    }
+
+    // Check if remote feature branch already exists
     const remoteBranches = await this.runGit(repoDir, [
       'branch',
       '-r',
       '--list',
       `origin/${clean}`,
     ]).catch(() => ({ stdout: '' }));
-    if (remoteBranches.stdout.trim()) {
-      await this.runGit(repoDir, ['pull', '--rebase', 'origin', clean], params.token).catch(() => {});
+
+    if (remoteBranches.stdout.trim() && !isInitialBootstrap) {
+      try {
+        await this.runGit(repoDir, ['pull', '--rebase', 'origin', clean], params.token);
+      } catch (rebaseErr: any) {
+        // In case of conflict, cleanly abort rebase to preserve workspace integrity
+        await this.runGit(repoDir, ['rebase', '--abort']).catch(() => {});
+        throw ApiError.conflict(
+          `[GIT_MERGE_CONFLICT] Cannot push branch '${clean}': remote branch contains conflicting changes. Rebase was aborted cleanly to protect workspace: ${rebaseErr.message}`,
+        );
+      }
     }
 
-    // Verify branch has new commits compared to the default branch
-    const logAhead = await this.runGit(repoDir, [
-      'log',
-      `origin/${params.defaultBranch}..HEAD`,
-      '--oneline',
-    ]).catch(() => ({ stdout: '' }));
+    // Verify branch has unique commits compared to the remote default branch
+    let commitsCount: number;
+    let changedFiles: string[];
 
-    if (!logAhead.stdout.trim()) {
-      throw ApiError.badRequest(
-        `Cannot create Pull Request: branch '${clean}' has no new commits or changes compared to '${params.defaultBranch}'. Please edit or create files in the workspace before pushing.`,
+    if (hasDefaultRemote && !isInitialBootstrap) {
+      const logAhead = await this.runGit(repoDir, [
+        'log',
+        `origin/${params.defaultBranch}..HEAD`,
+        '--oneline',
+      ]).catch(() => ({ stdout: '' }));
+
+      const lines = logAhead.stdout.trim().split('\n').filter(Boolean);
+      commitsCount = lines.length;
+
+      if (commitsCount === 0) {
+        throw ApiError.badRequest(
+          `Cannot create Pull Request: branch '${clean}' has no unique commits compared to '${params.defaultBranch}'. Please edit or create files in the workspace before pushing.`,
+        );
+      }
+
+      const diffRes = await this.runGit(repoDir, [
+        'diff',
+        '--name-only',
+        `origin/${params.defaultBranch}...HEAD`,
+      ]).catch(() => ({ stdout: '' }));
+      changedFiles = diffRes.stdout.trim().split('\n').filter(Boolean);
+    } else {
+      commitsCount = 1;
+      const filesRes = await this.runGit(repoDir, ['diff', '--name-only', 'HEAD~1...HEAD']).catch(
+        () => ({ stdout: '' }),
       );
+      changedFiles = filesRes.stdout.trim().split('\n').filter(Boolean);
     }
 
+    // Push feature branch to origin
     const shaRes = await this.runGit(repoDir, ['rev-parse', 'HEAD']);
     await this.runGit(repoDir, ['push', '-u', 'origin', clean], params.token);
-    return { commitSha: shaRes.stdout.trim(), branchName: clean };
+
+    return {
+      commitSha: shaRes.stdout.trim(),
+      branchName: clean,
+      commitsCount,
+      changedFiles,
+      isInitialBootstrap,
+    };
   }
 
   async runSafeChecks(owner: string, name: string): Promise<

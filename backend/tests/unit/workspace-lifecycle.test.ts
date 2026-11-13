@@ -74,4 +74,258 @@ describe('WorkspaceService security & folder isolation', () => {
     expect(prRow.status).toBe('MERGED');
     expect(savePr).toHaveBeenCalledTimes(1);
   });
+
+  it('rejects PR creation when GitHub compare API detects 0 unique commits between branches (prevents Validation Failed: No commits between main and branch)', async () => {
+    vi.spyOn(runtimeSecrets, 'resolveRuntimeSecret').mockResolvedValue('ghp_test_token');
+
+    // Mock compare API returning 0 commits ahead
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/compare/')) {
+        return new Response(
+          JSON.stringify({
+            status: 'identical',
+            ahead_by: 0,
+            behind_by: 0,
+            total_commits: 0,
+            commits: [],
+            files: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (urlStr.includes('/pulls?head=')) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 404 });
+    });
+
+    const mockWs = {
+      commitAndPushBranch: vi.fn().mockResolvedValue({
+        commitSha: '5bacc01',
+        branchName: 'codynex/workspace-update',
+        commitsCount: 0,
+        changedFiles: [],
+      }),
+    };
+
+    const engRepo = {
+      findRepoById: vi.fn().mockResolvedValue({
+        id: 'repo-1',
+        owner: 'CodynexNepal',
+        name: 'aliza-wears',
+        defaultBranch: 'main',
+        isWriteAuthorized: true,
+      }),
+    } as any;
+
+    const service = new EngineeringService(
+      engRepo,
+      {} as any,
+      {} as any,
+      { log: vi.fn() } as any,
+      undefined,
+      mockWs as any,
+    );
+
+    await expect(
+      service.commitPushAndOpenPr({
+        repoId: 'repo-1',
+        branchName: 'codynex/workspace-update',
+        title: 'update workspace',
+        actorId: 'user-1',
+      }),
+    ).rejects.toThrow(/PR_NO_COMMITS_BETWEEN_BRANCHES/);
+  });
+
+  it('reuses existing open Pull Request if one is already open on remote instead of failing with 422', async () => {
+    vi.spyOn(runtimeSecrets, 'resolveRuntimeSecret').mockResolvedValue('ghp_test_token');
+
+    const openPrPayload = {
+      number: 42,
+      state: 'open',
+      title: 'feat: existing feature PR',
+      html_url: 'https://github.com/CodynexNepal/aliza-wears/pull/42',
+    };
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/compare/')) {
+        return new Response(
+          JSON.stringify({
+            status: 'identical',
+            ahead_by: 0,
+            total_commits: 0,
+          }),
+          { status: 200 },
+        );
+      }
+      if (urlStr.includes('/pulls?head=')) {
+        return new Response(JSON.stringify([openPrPayload]), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 404 });
+    });
+
+    const mockWs = {
+      commitAndPushBranch: vi.fn().mockResolvedValue({
+        commitSha: '5bacc01',
+        branchName: 'codynex/feature-42',
+        commitsCount: 1,
+        changedFiles: ['README.md'],
+      }),
+    };
+
+    const savedPr = { id: 'pr-42', prNumber: 42, status: 'OPEN' };
+    const engRepo = {
+      findRepoById: vi.fn().mockResolvedValue({
+        id: 'repo-1',
+        owner: 'CodynexNepal',
+        name: 'aliza-wears',
+        defaultBranch: 'main',
+        isWriteAuthorized: true,
+      }),
+      savePullRequest: vi.fn().mockResolvedValue(savedPr),
+    } as any;
+
+    const service = new EngineeringService(
+      engRepo,
+      {} as any,
+      {} as any,
+      { log: vi.fn() } as any,
+      undefined,
+      mockWs as any,
+    );
+    const result = await service.commitPushAndOpenPr({
+      repoId: 'repo-1',
+      branchName: 'codynex/feature-42',
+      title: 'feat: existing feature PR',
+      actorId: 'user-1',
+    });
+
+    expect(result.pullRequest.prNumber).toBe(42);
+    expect(result.commitSha).toBe('5bacc01');
+    expect(engRepo.savePullRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('auto-commits written files on isolated feature branch during writeWorkspaceFiles', async () => {
+    vi.spyOn(runtimeSecrets, 'resolveRuntimeSecret').mockResolvedValue('ghp_test_token');
+
+    const mockWs = {
+      ensureClonedOrPulled: vi.fn().mockResolvedValue({ repoDir: '/tmp/repo', action: 'cloned' }),
+      checkoutBranch: vi.fn().mockResolvedValue(undefined),
+      writeFiles: vi.fn().mockResolvedValue(['src/index.ts', 'package.json']),
+      stageAndCommit: vi.fn().mockResolvedValue({ committed: true, commitSha: 'abc999' }),
+    };
+
+    const engRepo = {
+      findRepoById: vi.fn().mockResolvedValue({
+        id: 'repo-1',
+        owner: 'CodynexNepal',
+        name: 'aliza-wears',
+        defaultBranch: 'main',
+        isWriteAuthorized: true,
+      }),
+    } as any;
+
+    const service = new EngineeringService(
+      engRepo,
+      {} as any,
+      {} as any,
+      { log: vi.fn() } as any,
+      undefined,
+      mockWs as any,
+    );
+    const result = await service.writeWorkspaceFiles(
+      'repo-1',
+      'codynex/feature-task-1',
+      [
+        { path: 'src/index.ts', content: 'console.log("hello");' },
+        { path: 'package.json', content: '{"name":"app"}' },
+      ],
+      'user-1',
+    );
+
+    expect(result.written).toEqual(['src/index.ts', 'package.json']);
+    expect(mockWs.stageAndCommit).toHaveBeenCalledTimes(1);
+    expect(mockWs.stageAndCommit).toHaveBeenCalledWith(
+      'CodynexNepal',
+      'aliza-wears',
+      'codynex/feature-task-1',
+      expect.stringContaining('write 2 implementation file(s)'),
+    );
+  });
+
+  it('rejects push if feature branch has no unique commits compared to default branch', async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codynex-ws-ahead-'));
+    const ws = new WorkspaceService(tmpRoot);
+
+    // Mock runGit on the workspace service instance
+    vi.spyOn(ws as any, 'runGit').mockImplementation(async (_cwd: string, args: string[]) => {
+      const cmd = args.join(' ');
+      if (cmd.includes('fetch origin')) return { stdout: '', stderr: '' };
+      if (cmd.includes('rev-parse --verify origin/main')) return { stdout: 'hash1', stderr: '' };
+      if (cmd.includes('log origin/main..main')) return { stdout: '', stderr: '' };
+      if (cmd.includes('rev-parse --verify HEAD')) return { stdout: 'hash1', stderr: '' };
+      if (cmd.includes('rev-parse --abbrev-ref HEAD')) return { stdout: 'codynex/test-branch', stderr: '' };
+      if (cmd.includes('status --porcelain')) return { stdout: '', stderr: '' };
+      if (cmd.includes('branch -r --list origin/codynex/test-branch')) return { stdout: '', stderr: '' };
+      // log ahead returns empty string (no unique commits)
+      if (cmd.includes('log origin/main..HEAD')) return { stdout: '', stderr: '' };
+      return { stdout: '', stderr: '' };
+    });
+
+    await expect(
+      ws.commitAndPushBranch({
+        owner: 'CodynexNepal',
+        name: 'test-repo',
+        branchName: 'codynex/test-branch',
+        defaultBranch: 'main',
+        commitMessage: 'feat: test commit',
+        token: 'fake-token',
+      }),
+    ).rejects.toThrow(/has no unique commits compared to 'main'/);
+
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('aborts rebase cleanly and throws GIT_MERGE_CONFLICT when remote feature branch has conflicting changes', async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codynex-ws-conflict-'));
+    const ws = new WorkspaceService(tmpRoot);
+
+    let rebaseAborted = false;
+    vi.spyOn(ws as any, 'runGit').mockImplementation(async (_cwd: string, args: string[]) => {
+      const cmd = args.join(' ');
+      if (cmd.includes('fetch origin')) return { stdout: '', stderr: '' };
+      if (cmd.includes('rev-parse --verify origin/main')) return { stdout: 'hash1', stderr: '' };
+      if (cmd.includes('log origin/main..main')) return { stdout: '', stderr: '' };
+      if (cmd.includes('rev-parse --verify HEAD')) return { stdout: 'hash1', stderr: '' };
+      if (cmd.includes('rev-parse --abbrev-ref HEAD')) return { stdout: 'codynex/test-branch', stderr: '' };
+      if (cmd.includes('status --porcelain')) return { stdout: '', stderr: '' };
+      if (cmd.includes('branch -r --list origin/codynex/test-branch')) {
+        return { stdout: 'origin/codynex/test-branch\n', stderr: '' };
+      }
+      if (cmd.includes('pull --rebase origin codynex/test-branch')) {
+        throw new Error('CONFLICT (content): Merge conflict in src/app.ts');
+      }
+      if (cmd.includes('rebase --abort')) {
+        rebaseAborted = true;
+        return { stdout: '', stderr: '' };
+      }
+      return { stdout: '', stderr: '' };
+    });
+
+    await expect(
+      ws.commitAndPushBranch({
+        owner: 'CodynexNepal',
+        name: 'test-repo',
+        branchName: 'codynex/test-branch',
+        defaultBranch: 'main',
+        commitMessage: 'feat: test commit',
+        token: 'fake-token',
+      }),
+    ).rejects.toThrow(/GIT_MERGE_CONFLICT/);
+
+    expect(rebaseAborted).toBe(true);
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+  });
 });

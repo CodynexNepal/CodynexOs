@@ -703,6 +703,16 @@ export class EngineeringService {
     );
     const written = await this.workspaceService.writeFiles(repo.owner, repo.name, files);
 
+    // Auto-commit written files immediately on the isolated feature branch to ensure changes are persisted
+    if (written.length > 0) {
+      await this.workspaceService.stageAndCommit(
+        repo.owner,
+        repo.name,
+        branchName,
+        `feat(agent): write ${written.length} implementation file(s) on ${branchName}`,
+      );
+    }
+
     await this.auditService.log({
       actorType: 'USER',
       actorId,
@@ -767,6 +777,63 @@ export class EngineeringService {
     });
 
     const headers = await this.buildGithubHeaders();
+
+    // Remote PR Pre-flight Check: verify unique commits exist between base and head on GitHub
+    const compareUrl = `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/compare/${encodeURIComponent(repo.defaultBranch)}...${encodeURIComponent(pushed.branchName)}`;
+    const compareRes = await fetch(compareUrl, { headers }).catch(() => null);
+
+    if (compareRes && compareRes.ok) {
+      const compareData = (await compareRes.json()) as {
+        status?: string;
+        ahead_by?: number;
+        total_commits?: number;
+      };
+
+      if (
+        compareData.total_commits === 0 ||
+        compareData.ahead_by === 0 ||
+        compareData.status === 'identical'
+      ) {
+        // Check whether an open or already-merged PR exists for this branch
+        const existingPrsRes = await fetch(
+          `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls?head=${encodeURIComponent(repo.owner)}:${encodeURIComponent(pushed.branchName)}&state=all`,
+          { headers },
+        ).catch(() => null);
+
+        let existingNote = '';
+        if (existingPrsRes && existingPrsRes.ok) {
+          const list = (await existingPrsRes.json()) as Array<{
+            number: number;
+            state: string;
+            merged_at?: string | null;
+            html_url: string;
+            title: string;
+          }>;
+          if (list[0]) {
+            const p = list[0];
+            if (p.state === 'open') {
+              // Reuse existing open PR
+              const existingRecord = await this.engRepo.savePullRequest({
+                repositoryId: repo.id,
+                taskId: params.taskId ?? null,
+                prNumber: p.number,
+                branchName: pushed.branchName,
+                title: p.title || params.title,
+                status: 'OPEN',
+                htmlUrl: p.html_url,
+              });
+              return { commitSha: pushed.commitSha, pullRequest: existingRecord };
+            }
+            existingNote = ` Previous Pull Request #${p.number} for branch '${pushed.branchName}' was already ${p.merged_at ? 'MERGED' : 'CLOSED'}. Use a fresh feature branch name (e.g. 'codynex/${pushed.branchName.replace(/^codynex\//, '')}-${Date.now().toString(36)}').`;
+          }
+        }
+
+        throw ApiError.badRequest(
+          `[PR_NO_COMMITS_BETWEEN_BRANCHES] Cannot create Pull Request: GitHub remote reports 0 unique commits between '${repo.defaultBranch}' and '${pushed.branchName}' (status: ${compareData.status || 'identical'}).${existingNote || ' Ensure actual changes are committed before pushing.'}`,
+        );
+      }
+    }
+
     const prRes = await fetch(
       `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls`,
       {
@@ -778,7 +845,7 @@ export class EngineeringService {
           base: repo.defaultBranch,
           body:
             params.body ||
-            `Automated Pull Request pushed from CodyNex OS workspace (${pushed.commitSha.slice(0, 7)}).`,
+            `Automated Pull Request pushed from CodyNex OS workspace (${pushed.commitSha.slice(0, 7)}). Contains ${pushed.commitsCount} commit(s) across ${pushed.changedFiles.length} file(s).`,
         }),
       },
     );

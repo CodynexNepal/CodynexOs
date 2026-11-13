@@ -101,7 +101,7 @@ export default function GithubPage() {
   const [newFileOpen, setNewFileOpen] = useState(false);
   const [newFilePath, setNewFilePath] = useState("");
   const [newFileContent, setNewFileContent] = useState("");
-  const [branchName, setBranchName] = useState("codynex/workspace-update");
+  const [branchName, setBranchName] = useState(() => `codynex/feature-${Date.now().toString(36)}`);
   const [prTitle, setPrTitle] = useState("");
   const [checksResult, setChecksResult] = useState<{
     verdict: string;
@@ -329,6 +329,7 @@ export default function GithubPage() {
       setActionMsg(
         `Committed (${out.commitSha.slice(0, 7)}), pushed branch '${branchName}', opened PR #${out.pullRequest.prNumber}, and queued CEO Approval in Deployment Center.`
       );
+      setBranchName(`codynex/feature-${Date.now().toString(36)}`);
       await loadWorkspace(activeRepo, currentPath);
     } catch (err) {
       setActionErr(toApiError(err).message);
