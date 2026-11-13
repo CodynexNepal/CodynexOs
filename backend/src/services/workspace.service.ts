@@ -558,6 +558,50 @@ export class WorkspaceService {
     };
   }
 
+  async installDependencies(
+    owner: string,
+    name: string,
+  ): Promise<{ success: boolean; output: string }> {
+    const repoDir = this.getRepoDir(owner, name);
+    const pkgPath = path.join(repoDir, 'package.json');
+
+    const hasPkg = await fs.access(pkgPath).then(
+      () => true,
+      () => false,
+    );
+
+    if (!hasPkg) {
+      return { success: true, output: 'No package.json found; skipping dependency installation.' };
+    }
+
+    const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    try {
+      const res = await execFileAsync(
+        npmBin,
+        ['install', '--prefer-offline', '--no-audit', '--no-fund'],
+        {
+          cwd: repoDir,
+          timeout: 180000,
+          maxBuffer: 8 * 1024 * 1024,
+          env: {
+            ...process.env,
+            NODE_ENV: 'development',
+          },
+        },
+      );
+      return {
+        success: true,
+        output: (res.stdout || res.stderr || 'Dependencies installed successfully.').slice(-1500),
+      };
+    } catch (err: any) {
+      const errMsg = String(err?.stderr || err?.stdout || err?.message || 'npm install failed');
+      return {
+        success: false,
+        output: errMsg.slice(-2000),
+      };
+    }
+  }
+
   async runSafeChecks(owner: string, name: string): Promise<
     Array<{ name: string; status: 'PASS' | 'FAIL' | 'SKIPPED'; output: string }>
   > {
@@ -581,12 +625,20 @@ export class WorkspaceService {
     try {
       await fs.access(path.join(repoDir, 'node_modules'));
     } catch {
+      const installRes = await this.installDependencies(owner, name);
+      if (!installRes.success) {
+        checks.push({
+          name: 'dependencies',
+          status: 'FAIL',
+          output: `Failed to install dependencies: ${installRes.output}`,
+        });
+        return checks;
+      }
       checks.push({
         name: 'dependencies',
-        status: 'SKIPPED',
-        output: 'node_modules not installed in workspace; skipping script execution.',
+        status: 'PASS',
+        output: 'Dependencies automatically installed in workspace.',
       });
-      return checks;
     }
 
     const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -698,10 +750,56 @@ export class WorkspaceService {
       }
     }
 
+    if (program === 'npm' || program === 'pnpm' || program === 'yarn') {
+      const allowedNpmSubcommands = new Set([
+        'install',
+        'i',
+        'ci',
+        'test',
+        'run',
+        'build',
+        'typecheck',
+        'lint',
+        'list',
+        'ls',
+        'audit',
+      ]);
+      const subCmd = (args[0] || '').toLowerCase();
+      if (args.length > 0 && !allowedNpmSubcommands.has(subCmd)) {
+        return {
+          stdout: '',
+          stderr: `npm subcommand '${subCmd}' is not permitted in workspace terminal. Permitted: install, i, test, run, build, typecheck, lint, list.`,
+          exitCode: 1,
+          branch: currentBranch,
+        };
+      }
+      const bin = process.platform === 'win32' ? `${program}.cmd` : program;
+      try {
+        const res = await execFileAsync(bin, args, {
+          cwd: repoDir,
+          timeout: 180000,
+          maxBuffer: 4 * 1024 * 1024,
+        });
+        return {
+          stdout: res.stdout,
+          stderr: res.stderr,
+          exitCode: 0,
+          branch: currentBranch,
+        };
+      } catch (err: any) {
+        return {
+          stdout: err?.stdout ? String(err.stdout) : '',
+          stderr: err?.stderr || err?.message || 'npm command failed',
+          exitCode: typeof err?.code === 'number' ? err.code : 1,
+          branch: currentBranch,
+        };
+      }
+    }
+
     if (program !== 'git') {
       return {
         stdout: '',
-        stderr: `Command '${program}' not recognized. Permitted commands: git, ls, dir, pwd.`,
+        stderr: `Command '${program}' not recognized. Permitted commands: git, npm, pnpm, yarn, ls, dir, pwd.`,
         exitCode: 1,
         branch: currentBranch,
       };

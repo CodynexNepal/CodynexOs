@@ -179,6 +179,12 @@ export function createOsRouter(): Router {
     domainController.runWorkspaceTerminal,
   );
   router.post(
+    '/github/repos/:id/workspace/install-deps',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.installWorkspaceDeps,
+  );
+  router.post(
     '/github/repos/:id/workspace/checks',
     requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
     requireParam('id', { uuid: true }),

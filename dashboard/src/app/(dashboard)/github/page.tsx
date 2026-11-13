@@ -15,6 +15,7 @@ import {
   GitCommit,
   GitPullRequest,
   Key,
+  Package,
   Play,
   Plus,
   RefreshCw,
@@ -383,6 +384,26 @@ export default function GithubPage() {
       setNewFilePath("");
       setNewFileContent("");
       setNewFileCommitMsg("");
+      await loadWorkspace(activeRepo, currentPath);
+    } catch (err) {
+      setActionErr(toApiError(err).message);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleInstallDeps = async () => {
+    if (!activeRepo) return;
+    setBusyAction("install-deps");
+    setActionErr(null);
+    try {
+      const res = await codynexApi.github.workspaceInstallDeps(activeRepo.id);
+      const out = unwrap<{ success: boolean; output: string }>(res.data);
+      if (out.success) {
+        setActionMsg("Dependencies installed successfully in workspace (node_modules ready).");
+      } else {
+        setActionErr(`Dependency installation failed: ${out.output}`);
+      }
       await loadWorkspace(activeRepo, currentPath);
     } catch (err) {
       setActionErr(toApiError(err).message);
@@ -780,6 +801,15 @@ export default function GithubPage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={handleInstallDeps}
+                        loading={busyAction === "install-deps"}
+                      >
+                        <Package className="h-3.5 w-3.5" />
+                        Install Dependencies
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={handleRunChecks}
                         loading={busyAction === "checks"}
                       >
@@ -1044,6 +1074,22 @@ export default function GithubPage() {
                       className="rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#ff7b72] hover:bg-[#30363d] transition-colors"
                     >
                       git branch -a
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRunTerminalCommand("npm install")}
+                      disabled={terminalRunning}
+                      className="rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#e3b341] hover:bg-[#30363d] transition-colors"
+                    >
+                      npm install
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRunTerminalCommand("npm test")}
+                      disabled={terminalRunning}
+                      className="rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#56d364] hover:bg-[#30363d] transition-colors"
+                    >
+                      npm test
                     </button>
                     <button
                       type="button"

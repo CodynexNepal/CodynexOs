@@ -14,6 +14,7 @@ import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useApiQuery } from "@/hooks/useApi";
 import { codynexApi } from "@/lib/codynexOs";
 import { formatDateTime } from "@/lib/utils";
+import { ProjectInstructionViewer } from "@/components/domain/ProjectInstructionViewer";
 import type { ProjectItem, TaskItem } from "@/types/os";
 
 export default function ProjectsPage() {
@@ -72,7 +73,10 @@ export default function ProjectsPage() {
                         <Badge tone={statusTone(p.status)}>{p.status}</Badge>
                         <Badge tone="gray">{p.priority}</Badge>
                       </div>
-                      <p className="mt-2 text-sm text-ink-muted">{p.ceoInstruction}</p>
+                      <ProjectInstructionViewer
+                        instruction={p.ceoInstruction}
+                        projectTitle={p.title}
+                      />
                     </div>
                     <div className="text-right text-xs text-ink-muted tabular-nums">
                       <p>Created {formatDateTime(p.createdAt)}</p>

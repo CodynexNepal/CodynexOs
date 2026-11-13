@@ -268,6 +268,7 @@ export class EngineeringService {
     return result;
   }
 
+
   async probeGithubToken(target?: {
     owner?: string;
     repo?: string;
@@ -658,6 +659,7 @@ export class EngineeringService {
     return result;
   }
 
+
   async listWorkspaceFiles(repoId: string, subPath = '') {
     const repo = await this.engRepo.findRepoById(repoId);
     if (!repo) throw ApiError.notFound('Repository not found.');
@@ -711,6 +713,14 @@ export class EngineeringService {
         branchName,
         `feat(agent): write ${written.length} implementation file(s) on ${branchName}`,
       );
+    }
+
+    // Auto-install dependencies if package.json was written or updated by the agent
+    const hasPkgInFiles = files.some(
+      (f) => f.path.trim() === 'package.json' || f.path.trim().endsWith('/package.json'),
+    );
+    if (hasPkgInFiles) {
+      await this.workspaceService.installDependencies(repo.owner, repo.name).catch(() => {});
     }
 
     await this.auditService.log({
@@ -808,6 +818,24 @@ export class EngineeringService {
         command: params.command.slice(0, 100),
         exitCode: result.exitCode,
       },
+    });
+
+    return result;
+  }
+
+  async installWorkspaceDependencies(repoId: string, actorId: string) {
+    const repo = await this.engRepo.findRepoById(repoId);
+    if (!repo) throw ApiError.notFound('Repository not found.');
+
+    const result = await this.workspaceService.installDependencies(repo.owner, repo.name);
+
+    await this.auditService.log({
+      actorType: 'USER',
+      actorId,
+      action: 'WORKSPACE_DEPS_INSTALLED',
+      resourceType: 'github_repository',
+      resourceId: repo.id,
+      metadata: { success: result.success },
     });
 
     return result;

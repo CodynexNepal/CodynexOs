@@ -130,6 +130,7 @@ export const codynexApi = {
         `/github/repos/${id}/workspace/terminal`,
         body
       ),
+    workspaceInstallDeps: (id: string) => api.post(`/github/repos/${id}/workspace/install-deps`, {}),
     workspaceRunChecks: (id: string) => api.post(`/github/repos/${id}/workspace/checks`, {}),
     workspacePushPr: (
       id: string,

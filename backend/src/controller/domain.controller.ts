@@ -275,6 +275,16 @@ export class DomainController {
     }
   };
 
+  installWorkspaceDeps = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.engService.installWorkspaceDependencies(id, req.user!.userId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
 
   runWorkspaceChecks = async (req: Request, res: Response, next: NextFunction) => {
     try {

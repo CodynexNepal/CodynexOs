@@ -215,6 +215,7 @@ describe('WorkspaceService security & folder isolation', () => {
       checkoutBranch: vi.fn().mockResolvedValue(undefined),
       writeFiles: vi.fn().mockResolvedValue(['src/index.ts', 'package.json']),
       stageAndCommit: vi.fn().mockResolvedValue({ committed: true, commitSha: 'abc999' }),
+      installDependencies: vi.fn().mockResolvedValue({ success: true, output: 'ok' }),
     };
 
     const engRepo = {
