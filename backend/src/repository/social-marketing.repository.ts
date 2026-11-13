@@ -49,4 +49,9 @@ export class SocialMarketingRepository {
   async saveSocialAccount(data: Partial<SocialAccountEntity>): Promise<SocialAccountEntity> {
     return this.socialAccountRepo.save(this.socialAccountRepo.create(data));
   }
+
+  async deleteSocialAccount(id: string): Promise<boolean> {
+    const res = await this.socialAccountRepo.delete(id);
+    return (res.affected ?? 0) > 0;
+  }
 }

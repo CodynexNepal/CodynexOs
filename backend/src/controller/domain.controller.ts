@@ -528,6 +528,22 @@ export class DomainController {
     }
   };
 
+  deleteSocialAccount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const id = getRequiredParam(req, 'id');
+      const data = await this.marketingService.deleteSocialAccount(id);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   listLeads = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const stage = typeof req.query.stage === 'string' ? req.query.stage : undefined;

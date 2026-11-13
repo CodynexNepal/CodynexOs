@@ -31,7 +31,7 @@ export const CULTURAL_OCCASIONS: OccasionDef[] = [
     defaultPrompt:
       'Warm Happy Tihar wishes to all Nepali families worldwide. Celebrate with traditional elegance, glowing Diyas, and modern festive fashion. Announce exclusive 20% festive discount with code TIHAR2026.',
     culturalKeywords: ['Diyo', 'Rangoli', 'Bhai Tika', 'Laxmi Puja', 'Dhaka Pattern', 'Silk Saree', 'Sel Roti', 'Sypatri'],
-    suggestedHashtags: ['#HappyTihar', '#Tihar2026', '#DeepawaliNepal', '#AlizaWears', '#FestiveFashionNepal', '#KathmanduVibes'],
+    suggestedHashtags: ['#HappyTihar', '#Tihar2026', '#DeepawaliNepal', '#FestiveFashionNepal', '#KathmanduVibes', '#CulturalNepal'],
   },
   {
     key: 'DASHAIN',
@@ -43,7 +43,7 @@ export const CULTURAL_OCCASIONS: OccasionDef[] = [
     defaultPrompt:
       'Heartfelt Vijaya Dashami and Bada Dashain greetings. Celebrate family reunion, Jamara, and Rato Tika with royal traditional outfits and festive collections.',
     culturalKeywords: ['Jamara', 'Rato Tika', 'Ping', 'Homecoming', 'Aashirbad', 'Royal Kurta', 'Pashmina'],
-    suggestedHashtags: ['#HappyDashain', '#DashainVibes', '#VijayaDashami', '#AlizaWears', '#TraditionalWearNepal'],
+    suggestedHashtags: ['#HappyDashain', '#DashainVibes', '#VijayaDashami', '#FestiveCelebration', '#NepalTradition'],
   },
   {
     key: 'CHHATH',
@@ -55,7 +55,7 @@ export const CULTURAL_OCCASIONS: OccasionDef[] = [
     defaultPrompt:
       'Peaceful and blessed Chhath Puja wishes. Celebrate purity, sunrise arghya, and devotion in serene pastel and ivory traditional wear.',
     culturalKeywords: ['Surya Arghya', 'Thekuwa', 'Purity', 'River Bank', 'Ivory Saree', 'Koshi'],
-    suggestedHashtags: ['#ChhathPuja', '#ChhathNepal', '#AlizaWears', '#EthnicNepal'],
+    suggestedHashtags: ['#ChhathPuja', '#ChhathNepal', '#CulturalHeritage', '#SuryaArghya'],
   },
   {
     key: 'HOLI',
@@ -67,7 +67,7 @@ export const CULTURAL_OCCASIONS: OccasionDef[] = [
     defaultPrompt:
       'Vibrant Holi greetings! Celebrate spring, color, and joy with breathable white cotton kurtas and colorful floral scarves.',
     culturalKeywords: ['Gulal', 'Colors', 'Spring', 'White Kurta', 'Organic Colors', 'Joy'],
-    suggestedHashtags: ['#HappyHoli', '#HoliNepal', '#ColorsOfNepal', '#AlizaWears', '#SpringFashion'],
+    suggestedHashtags: ['#HappyHoli', '#HoliNepal', '#ColorsOfNepal', '#FestivalOfColors', '#SpringVibes'],
   },
   {
     key: 'TEEJ',
@@ -79,7 +79,7 @@ export const CULTURAL_OCCASIONS: OccasionDef[] = [
     defaultPrompt:
       'Happy Haritalika Teej to all empowering women! Celebrate dance, devotion, and sisterhood in bridal red silk sarees and golden zari kurtas.',
     culturalKeywords: ['Red Saree', 'Pote', 'Bangles', 'Teej Song', 'Mukhiya', 'Tradition'],
-    suggestedHashtags: ['#HappyTeej', '#TeejSpecial', '#RedSareeNepal', '#AlizaWears', '#NepaliWomen'],
+    suggestedHashtags: ['#HappyTeej', '#TeejSpecial', '#RedSareeNepal', '#FestiveGlam', '#WomenOfNepal'],
   },
   {
     key: 'NEW_YEAR_NP',
@@ -91,7 +91,7 @@ export const CULTURAL_OCCASIONS: OccasionDef[] = [
     defaultPrompt:
       'Happy Nepali New Year! Welcome fresh beginnings, blooming rhododendrons, and contemporary styling with our Spring-Summer catalog.',
     culturalKeywords: ['Baishakh', 'Fresh Starts', 'Lali Gurans', 'Spring Summer', 'Modern Nepali'],
-    suggestedHashtags: ['#NepaliNewYear', '#NayaBarsha', '#AlizaWears', '#Spring2026'],
+    suggestedHashtags: ['#NepaliNewYear', '#NayaBarsha', '#BikramSambat', '#FreshBeginnings'],
   },
   {
     key: 'BLACK_FRIDAY',
@@ -103,7 +103,7 @@ export const CULTURAL_OCCASIONS: OccasionDef[] = [
     defaultPrompt:
       'Biggest drop of the year! 48-Hour Black Friday flash sale with flat 30-50% off across all bestsellers and free nationwide shipping.',
     culturalKeywords: ['Flash Sale', 'Exclusive Drop', 'Limited Stock', 'Fast Delivery', 'Doorstep Delivery'],
-    suggestedHashtags: ['#BlackFridayNepal', '#MegaSale', '#AlizaWears', '#CyberWeek', '#ShopOnlineNepal'],
+    suggestedHashtags: ['#BlackFriday', '#MegaSale', '#CyberDrop', '#ExclusiveDiscount', '#FlashSale'],
   },
   {
     key: 'CUSTOM',
@@ -114,7 +114,7 @@ export const CULTURAL_OCCASIONS: OccasionDef[] = [
     icon: '👑',
     defaultPrompt: 'Create a tailored multi-channel marketing post aligned with current brand goals and audience targets.',
     culturalKeywords: ['Executive', 'Brand Story', 'E-Commerce'],
-    suggestedHashtags: ['#AlizaWears', '#FashionNepal', '#OnlineShopping'],
+    suggestedHashtags: ['#OfficialAnnouncement', '#BrandCampaign', '#Exclusive'],
   },
 ];
 
@@ -180,82 +180,17 @@ export class MarketingService {
   }
 
   async listSocialAccounts(businessId?: string): Promise<SocialAccountEntity[]> {
-    const existing = await this.socialMarketingRepo.findSocialAccounts(businessId);
-    if (existing.length > 0) return existing;
-
-    // Seed official default accounts for Aliza Wears if none exist yet
-    const defaults: Array<Partial<SocialAccountEntity>> = [
-      {
-        businessId: businessId ?? null,
-        platform: 'FACEBOOK',
-        accountName: 'Aliza Wears Official',
-        accountHandle: '@alizawears.official',
-        pageOrPhoneId: 'page_fb_alizawears_8921',
-        isConnected: true,
-        metadata: {
-          followers: '48.2K',
-          verified: true,
-          category: 'Fashion & Apparel',
-          avatarUrl: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=150',
-          autoSync: true,
-        },
-      },
-      {
-        businessId: businessId ?? null,
-        platform: 'TIKTOK',
-        accountName: 'Aliza Wears Nepal',
-        accountHandle: '@alizawears_np',
-        pageOrPhoneId: 'tt_account_772091',
-        isConnected: true,
-        metadata: {
-          followers: '92.6K',
-          likes: '1.4M',
-          verified: true,
-          category: 'Clothing Brand',
-          avatarUrl: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=150',
-          creatorBadge: 'PRO',
-        },
-      },
-      {
-        businessId: businessId ?? null,
-        platform: 'WHATSAPP',
-        accountName: 'Aliza Wears Concierge',
-        accountHandle: '+977 980-123-ALIZA',
-        pageOrPhoneId: 'wa_phone_977980123999',
-        isConnected: true,
-        metadata: {
-          businessType: 'Official Business Account',
-          verified: true,
-          catalogSynced: true,
-          activeSubscribers: 12450,
-          responseTime: '< 5 mins',
-        },
-      },
-      {
-        businessId: businessId ?? null,
-        platform: 'INSTAGRAM',
-        accountName: 'Aliza Wears Studio',
-        accountHandle: '@alizawears',
-        pageOrPhoneId: 'ig_alizawears_5541',
-        isConnected: true,
-        metadata: {
-          followers: '64.1K',
-          verified: true,
-          category: 'Luxury Apparel & Lifestyle',
-          avatarUrl: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=150',
-        },
-      },
-    ];
-
-    const saved: SocialAccountEntity[] = [];
-    for (const d of defaults) {
-      saved.push(await this.socialMarketingRepo.saveSocialAccount(d));
-    }
-    return saved;
+    return this.socialMarketingRepo.findSocialAccounts(businessId);
   }
 
   async saveSocialAccount(data: Partial<SocialAccountEntity>): Promise<SocialAccountEntity> {
     return this.socialMarketingRepo.saveSocialAccount(data);
+  }
+
+  async deleteSocialAccount(id: string): Promise<boolean> {
+    const existing = await this.socialMarketingRepo.findSocialAccountById(id);
+    if (!existing) throw ApiError.notFound('Social account not found');
+    return this.socialMarketingRepo.deleteSocialAccount(id);
   }
 
   async testAccountConnection(id: string): Promise<{ success: boolean; latencyMs: number; message: string }> {
@@ -288,17 +223,19 @@ export class MarketingService {
       CULTURAL_OCCASIONS.find((o) => o.key === 'TIHAR')!;
 
     const brandVoice = input.brandVoice || 'Festive & Warm';
-    const bizName = input.businessName || 'Aliza Wears';
+    const bizName = input.businessName || 'CodyNex';
     const prompt = input.customPrompt || occasion.defaultPrompt;
     const discount = input.discountCode || (occasion.key === 'TIHAR' ? 'TIHAR2026' : 'FESTIVE20');
+    const bizDomain = `${bizName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`;
 
     // Attempt AI completion with ModelRouter
     let aiGenerated: GeneratedChannelContent | null = null;
     try {
-      const systemPrompt = `You are the Lead Digital Content Creator and Social Media Marketing Strategist for "${bizName}", a premium fashion and e-commerce brand based in Nepal.
+      const systemPrompt = `You are the Lead Digital Content Creator and Social Media Marketing Strategist for "${bizName}".
 Your task is to craft high-converting, culturally resonant, and highly authentic social media content for: ${occasion.name} (${occasion.nepaliName}).
 Brand Voice: ${brandVoice}.
 Active Discount / Promo: ${discount}.
+Brand Website: www.${bizDomain}
 
 Return ONLY a valid JSON object matching this schema:
 {
@@ -311,15 +248,15 @@ Return ONLY a valid JSON object matching this schema:
     ],
     "caption": "TikTok caption with emojis and call to action",
     "audioCue": "e.g. Trending Nepali acoustic flute remix / Lo-fi Tihar beat",
-    "hashtags": ["#Tihar2026", "#AlizaWears", "#TikTokNepal"]
+    "hashtags": ["#${occasion.key}", "#${bizName.replace(/[^a-zA-Z0-9]/g, '')}", "#TikTokNepal"]
   },
   "facebook": {
     "headline": "Compelling festive headline",
-    "postText": "Engaging storytelling post in natural Nepali-English blend, highlighting the joy of celebration, premium fabrics, and delivery",
-    "callToAction": "Shop now on alizawears.com or WhatsApp us",
-    "engagementQuestion": "Which color saree are you wearing this Bhai Tika? Comment below!",
+    "postText": "Engaging storytelling post in natural Nepali-English blend, highlighting the joy of celebration and fast delivery",
+    "callToAction": "Shop now on www.${bizDomain} or message us directly on WhatsApp",
+    "engagementQuestion": "Which color or outfit are you wearing this festival? Comment below!",
     "suggestedVisual": "Direction for single or carousel photo post",
-    "hashtags": ["#FestiveCollection", "#AlizaWears", "#HappyTihar"]
+    "hashtags": ["#${occasion.key}", "#${bizName.replace(/[^a-zA-Z0-9]/g, '')}", "#Celebration"]
   },
   "whatsapp": {
     "broadcastMessage": "Personalized VIP customer WhatsApp message with clear emojis and warm wishes",
@@ -328,14 +265,14 @@ Return ONLY a valid JSON object matching this schema:
       "⚡ Same-Day Delivery across Kathmandu Valley",
       "🎁 Free Luxury Gift Box on orders above Rs. 4,999"
     ],
-    "ctaLink": "https://alizawears.com/collections/tihar",
+    "ctaLink": "https://${bizDomain}/collections/${occasion.key.toLowerCase()}",
     "statusTeaser": "Short WhatsApp status update text"
   },
   "instagram": {
     "caption": "High-aesthetic Instagram feed copy",
-    "visualDirection": "Soft golden hour lighting, brass diyas, raw silk textures",
-    "storySticker": "Add Link / Poll: 'Team Saree or Team Kurta?'",
-    "hashtags": ["#FestiveElegance", "#AlizaWears", "#DiwaliVibes"]
+    "visualDirection": "Soft golden hour lighting, brass diyas, celebratory ambiance",
+    "storySticker": "Add Link / Poll: 'Rate this festive look 🔥'",
+    "hashtags": ["#FestiveVibes", "#${bizName.replace(/[^a-zA-Z0-9]/g, '')}"]
   }
 }`;
 
@@ -393,11 +330,14 @@ Return ONLY a valid JSON object matching this schema:
   ): GeneratedChannelContent {
     const isTihar = occasion.key === 'TIHAR';
     const isDashain = occasion.key === 'DASHAIN';
+    const bizDomain = `${bizName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`;
+    const brandTag = `#${bizName.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const hashtags = [brandTag, ...occasion.suggestedHashtags];
 
     return {
       tiktok: {
         hook: isTihar
-          ? '✨ तिहारमा के लगाउने सोच्दै हुनुहुन्छ? Watch this glow-up!'
+          ? `✨ तिहारमा के लगाउने सोच्दै हुनुहुन्छ? Watch this ${bizName} festive glow-up!`
           : `✨ Get ready with me for ${occasion.name}!`,
         scenes: [
           {
@@ -408,49 +348,49 @@ Return ONLY a valid JSON object matching this schema:
           },
           {
             scene: 2,
-            visual: 'Smooth transition showing premium festive silk saree & embroidered royal kurta sets.',
+            visual: `Smooth transition showing premium festive collection & designer styles from ${bizName}.`,
             audio: 'Beat drop with rhythmic Nepali folk fusion',
             caption: `Flat 20% OFF with code "${discount}" ✨ Delivery in 24 hrs!`,
           },
           {
             scene: 3,
-            visual: 'Model laughing with family, wearing Bhai Tika jewelry and stylish ethnic fit.',
+            visual: 'Model laughing with family, wearing festive attire and stylish celebratory fit.',
             audio: 'Warm vocal sign-off',
             caption: 'Tap the bio link to order before stock runs out! 🛍️',
           },
         ],
         caption: `दीपावलीको झिलिमिलीसँगै तपाईंको स्टाइल पनि चम्कियोस्! 🪔✨ Celebrate ${occasion.name} with ${bizName}'s handpicked festive collection. Tap bio link to shop with code ${discount}!`,
         audioCue: 'Trending Nepali Acoustic Lo-Fi Beat / Tihar Folk Remix',
-        hashtags: occasion.suggestedHashtags,
+        hashtags,
       },
       facebook: {
         headline: isTihar
           ? '🪔 तिहार तथा दीपावलीको पावन अवसरमा हार्दिक शुभकामना!'
           : `🎉 Celebrate ${occasion.name} with ${bizName}!`,
         postText: isTihar
-          ? `सयपत्रीको सुगन्ध, झिलिमिली बत्तीको उज्यालो, अनि दाजुभाइ-दिदीबहिनीको अगाध प्रेमको पर्व तिहारले तपाईं र तपाईंको परिवारमा सुख, शान्ति र समृद्धि छाओस्। 🪔✨\n\nयो विशेष उत्सवमा तपाईंको स्टाइललाई अझ विशेष बनाउन ${bizName} ले ल्याएको छ आकर्षक Festive Collection — प्रिमियम सिल्क, रयल कुर्था, अनि आधुनिक नेपाली डिजाइनहरू!\n\n🎁 Exclusive Festive Offer:\n• Use coupon code: "${discount}" for 20% Instant Discount\n• Free & Express Delivery across Kathmandu Valley within 24 Hours\n• Cash on Delivery & All Digital Payments (eSewa, Khalti, Fonepay) accepted.`
-          : `Warm festive greetings on the auspicious occasion of ${occasion.name}! 🌟\n\nDress in timeless elegance with ${bizName}'s latest designer drops crafted for comfort and festive sophistication.\n\nUse Code: "${discount}" for exclusive festive perks!`,
-        callToAction: 'Visit www.alizawears.com or message us directly on WhatsApp to place your order today!',
-        engagementQuestion: 'यसपालिको भाइटीकामा तपाईं कुन रङ्गको पहिरन रोज्दै हुनुहुन्छ? कमेन्टमा बताउनुहोला! 👇',
-        suggestedVisual: 'High-resolution festive showcase: Golden hour lighting with brass Diyas, silk sarees, and embroidered kurtas.',
-        hashtags: occasion.suggestedHashtags,
+          ? `सयपत्रीको सुगन्ध, झिलिमिली बत्तीको उज्यालो, अनि दाजुभाइ-दिदीबहिनीको अगाध प्रेमको पर्व तिहारले तपाईं र तपाईंको परिवारमा सुख, शान्ति र समृद्धि छाओस्। 🪔✨\n\nयो विशेष उत्सवमा तपाईंको स्टाइललाई अझ विशेष बनाउन ${bizName} ले ल्याएको छ आकर्षक Festive Collection — प्रिमियम डिजाइनहरू!\n\n🎁 Exclusive Festive Offer:\n• Use coupon code: "${discount}" for 20% Instant Discount\n• Free & Express Delivery across Kathmandu Valley within 24 Hours\n• Cash on Delivery & All Digital Payments (eSewa, Khalti, Fonepay) accepted.`
+          : `Warm festive greetings on the auspicious occasion of ${occasion.name}! 🌟\n\nCelebrate in timeless elegance with ${bizName}'s latest drops crafted for comfort and festive sophistication.\n\nUse Code: "${discount}" for exclusive festive perks!`,
+        callToAction: `Visit www.${bizDomain} or message us directly on WhatsApp to place your order today!`,
+        engagementQuestion: 'यसपालिको उत्सवमा तपाईं कुन पहिरन रोज्दै हुनुहुन्छ? कमेन्टमा बताउनुहोला! 👇',
+        suggestedVisual: `High-resolution festive showcase: Golden hour lighting with brass Diyas, festive outfits, and ${bizName} showcase.`,
+        hashtags,
       },
       whatsapp: {
         broadcastMessage: `*Namaste from ${bizName}!* 🪔✨\n\nWishing you and your family a luminous, prosperous, and joyful *${occasion.name}*!\n\nAs our valued customer, we have reserved an exclusive festive treat for your celebrations:`,
         bulletPoints: [
           `🌟 *20% Instant Discount* with code: *${discount}*`,
           `⚡ *Same-Day Delivery* inside Ring Road (Order before 2 PM)`,
-          `🎁 *Complimentary Silk Pouch & Diya Set* on all orders above Rs. 3,500`,
+          `🎁 *Complimentary Festive Gift Box* on all orders above Rs. 3,500`,
           `📲 Easy Payment via *eSewa, Khalti, Fonepay, or Cash on Delivery*`,
         ],
-        ctaLink: 'https://alizawears.com/collections/festive',
-        statusTeaser: `🪔 Celebrate Tihar with timeless elegance! Flat 20% OFF with code ${discount} — Shop now!`,
+        ctaLink: `https://${bizDomain}/collections/${occasion.key.toLowerCase()}`,
+        statusTeaser: `🪔 Celebrate ${occasion.name} with timeless elegance! Flat 20% OFF with code ${discount} — Shop now!`,
       },
       instagram: {
-        caption: `Glow brighter than the diyas this festive season. ✨ Captured in pure silk and festive warmth. Celebrate ${occasion.name} with ${bizName}.\n\nCoupon code: ${discount} for 20% off.\nLink in bio.`,
-        visualDirection: 'Moody candle-lit flat lay with brass diyas, marigolds, and silk drape.',
-        storySticker: 'Interactive Slider: "Rate this Tihar look 🔥"',
-        hashtags: occasion.suggestedHashtags,
+        caption: `Glow brighter than the lights this festive season. ✨ Captured in premium elegance and festive warmth. Celebrate ${occasion.name} with ${bizName}.\n\nCoupon code: ${discount} for 20% off.\nLink in bio.`,
+        visualDirection: 'Moody candle-lit flat lay with brass diyas, marigolds, and designer collection.',
+        storySticker: 'Interactive Slider: "Rate this festive look 🔥"',
+        hashtags,
       },
     };
   }
@@ -486,46 +426,38 @@ Return ONLY a valid JSON object matching this schema:
     const nowIso = new Date().toISOString();
     const timestamp = Date.now();
 
+    // Query dynamically connected accounts for this business or workspace
+    const accounts = await this.socialMarketingRepo.findSocialAccounts(params.businessId);
+
     for (const channel of params.channels) {
+      const acc = accounts.find((a) => a.platform === channel && a.isConnected);
+      const extId = `${channel.toLowerCase()}_post_${timestamp}_${Math.floor(Math.random() * 8999 + 1000)}`;
+      let externalUrl = '';
+
       if (channel === 'FACEBOOK') {
-        const extId = `fb_post_${timestamp}_${Math.floor(Math.random() * 8999 + 1000)}`;
-        dispatches.push({
-          channel: 'FACEBOOK',
-          status: 'PUBLISHED',
-          externalId: extId,
-          externalUrl: `https://facebook.com/AlizaWearsOfficial/posts/${extId}`,
-          dispatchedAt: nowIso,
-        });
+        const pageTarget = acc?.pageOrPhoneId || acc?.accountHandle?.replace('@', '') || 'official';
+        externalUrl = `https://facebook.com/${pageTarget}/posts/${extId}`;
       } else if (channel === 'TIKTOK') {
-        const extId = `tt_v_${timestamp}_${Math.floor(Math.random() * 8999 + 1000)}`;
-        dispatches.push({
-          channel: 'TIKTOK',
-          status: 'PUBLISHED',
-          externalId: extId,
-          externalUrl: `https://www.tiktok.com/@alizawears_np/video/${extId}`,
-          dispatchedAt: nowIso,
-        });
+        const handle = acc?.accountHandle || '@codynexnepal';
+        const formattedHandle = handle.startsWith('@') ? handle : `@${handle}`;
+        externalUrl = `https://www.tiktok.com/${formattedHandle}/video/${extId}`;
       } else if (channel === 'WHATSAPP') {
-        const extId = `wa_msg_${timestamp}_${Math.floor(Math.random() * 8999 + 1000)}`;
-        dispatches.push({
-          channel: 'WHATSAPP',
-          status: 'PUBLISHED',
-          externalId: extId,
-          externalUrl: `https://wa.me/9779801239999?text=${encodeURIComponent(
-            params.content.whatsapp?.broadcastMessage || 'Happy Tihar from Aliza Wears',
-          )}`,
-          dispatchedAt: nowIso,
-        });
+        const rawPhone = acc?.pageOrPhoneId || acc?.accountHandle || '977980123999';
+        const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+        const messageText = params.content.whatsapp?.broadcastMessage || `Festive greetings from ${acc?.accountName || 'our team'}!`;
+        externalUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}`;
       } else if (channel === 'INSTAGRAM') {
-        const extId = `ig_post_${timestamp}_${Math.floor(Math.random() * 8999 + 1000)}`;
-        dispatches.push({
-          channel: 'INSTAGRAM',
-          status: 'PUBLISHED',
-          externalId: extId,
-          externalUrl: `https://instagram.com/p/${extId}`,
-          dispatchedAt: nowIso,
-        });
+        const igHandle = acc?.accountHandle ? acc.accountHandle.replace('@', '') : 'official';
+        externalUrl = `https://instagram.com/${igHandle}/p/${extId}`;
       }
+
+      dispatches.push({
+        channel,
+        status: 'PUBLISHED',
+        externalId: extId,
+        externalUrl,
+        dispatchedAt: nowIso,
+      });
     }
 
     let campaign: MarketingCampaignEntity;

@@ -19,6 +19,8 @@ import {
   Copy,
   Globe,
   Smartphone,
+  Trash2,
+  Edit,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card } from "@/components/ui/Card";
@@ -110,59 +112,63 @@ interface GeneratedContent {
   };
 }
 
-const INITIAL_TIHAR_CONTENT: GeneratedContent = {
-  tiktok: {
-    hook: "✨ तिहारमा के लगाउने सोच्दै हुनुहुन्छ? Watch this festive glow-up!",
-    scenes: [
-      {
-        scene: 1,
-        visual: "Close-up of lighting traditional brass Diya with glowing marigold backdrop in slow motion.",
-        audio: "Trending Nepali acoustic sitar + modern lo-fi chill beat",
-        caption: "Happy Tihar from Aliza Wears family! 🪔",
-      },
-      {
-        scene: 2,
-        visual: "Smooth transition showing premium festive silk saree & embroidered royal kurta sets.",
-        audio: "Beat drop with rhythmic Nepali folk fusion",
-        caption: "Flat 20% OFF with code \"TIHAR2026\" ✨ Delivery in 24 hrs!",
-      },
-      {
-        scene: 3,
-        visual: "Model laughing with family, wearing Bhai Tika jewelry and stylish ethnic fit.",
-        audio: "Warm vocal sign-off",
-        caption: "Tap the bio link to order before stock runs out! 🛍️",
-      },
-    ],
-    caption: "दीपावलीको झिलिमिलीसँगै तपाईंको स्टाइल पनि चम्कियोस्! 🪔✨ Celebrate Tihar with Aliza Wears' handpicked festive collection. Tap bio link to shop with code TIHAR2026!",
-    audioCue: "Trending Nepali Acoustic Lo-Fi Beat / Tihar Folk Remix",
-    hashtags: ["#HappyTihar", "#Tihar2026", "#DeepawaliNepal", "#AlizaWears", "#FestiveFashionNepal"],
-  },
-  facebook: {
-    headline: "🪔 तिहार तथा दीपावलीको पावन अवसरमा हार्दिक शुभकामना!",
-    postText: "सयपत्रीको सुगन्ध, झिलिमिली बत्तीको उज्यालो, अनि दाजुभाइ-दिदीबहिनीको अगाध प्रेमको पर्व तिहारले तपाईं र तपाईंको परिवारमा सुख, शान्ति र समृद्धि छाओस्। 🪔✨\n\nयो विशेष उत्सवमा तपाईंको स्टाइललाई अझ विशेष बनाउन Aliza Wears ले ल्याएको छ आकर्षक Festive Collection — प्रिमियम सिल्क, रयल कुर्था, अनि आधुनिक नेपाली डिजाइनहरू!\n\n🎁 Exclusive Festive Offer:\n• Use coupon code: \"TIHAR2026\" for 20% Instant Discount\n• Free & Express Delivery across Kathmandu Valley within 24 Hours\n• Cash on Delivery & All Digital Payments (eSewa, Khalti, Fonepay) accepted.",
-    callToAction: "Visit www.alizawears.com or message us directly on WhatsApp to place your order today!",
-    engagementQuestion: "यसपालिको भाइटीकामा तपाईं कुन रङ्गको पहिरन रोज्दै हुनुहुन्छ? कमेन्टमा बताउनुहोला! 👇",
-    suggestedVisual: "High-resolution festive showcase: Golden hour lighting with brass Diyas, silk sarees, and embroidered kurtas.",
-    hashtags: ["#FestiveCollection", "#AlizaWears", "#HappyTihar", "#Tihar2026"],
-  },
-  whatsapp: {
-    broadcastMessage: "*Namaste from Aliza Wears!* 🪔✨\n\nWishing you and your family a luminous, prosperous, and joyful *Tihar & Deepawali*!\n\nAs our valued customer, we have reserved an exclusive festive treat for your celebrations:",
-    bulletPoints: [
-      "🌟 *20% Instant Discount* with code: *TIHAR2026*",
-      "⚡ *Same-Day Delivery* inside Ring Road (Order before 2 PM)",
-      "🎁 *Complimentary Silk Pouch & Diya Set* on all orders above Rs. 3,500",
-      "📲 Easy Payment via *eSewa, Khalti, Fonepay, or Cash on Delivery*",
-    ],
-    ctaLink: "https://alizawears.com/collections/tihar",
-    statusTeaser: "🪔 Celebrate Tihar with timeless elegance! Flat 20% OFF with code TIHAR2026 — Shop now!",
-  },
-  instagram: {
-    caption: "Glow brighter than the diyas this festive season. ✨ Captured in pure silk and festive warmth. Celebrate Tihar with Aliza Wears.\n\nCoupon code: TIHAR2026 for 20% off.\nLink in bio.",
-    visualDirection: "Moody candle-lit flat lay with brass diyas, marigolds, and silk drape.",
-    storySticker: "Interactive Slider: 'Rate this Tihar look 🔥'",
-    hashtags: ["#FestiveElegance", "#AlizaWears", "#DiwaliVibes"],
-  },
-};
+function buildDynamicContent(bizName: string, handle: string): GeneratedContent {
+  const brandTag = `#${bizName.replace(/[^a-zA-Z0-9]/g, "")}`;
+  const webDomain = `${bizName.toLowerCase().replace(/[^a-z0-9]/g, "")}.com`;
+  return {
+    tiktok: {
+      hook: `✨ चाडपर्वमा के लगाउने सोच्दै हुनुहुन्छ? Watch this ${bizName} glow-up!`,
+      scenes: [
+        {
+          scene: 1,
+          visual: "Close-up of lighting traditional brass Diya with glowing marigold backdrop in slow motion.",
+          audio: "Trending Nepali acoustic sitar + modern lo-fi chill beat",
+          caption: `Warm festive greetings from ${bizName}! 🪔`,
+        },
+        {
+          scene: 2,
+          visual: `Smooth transition showing premium festive collections & designer styles from ${bizName}.`,
+          audio: "Beat drop with rhythmic Nepali folk fusion",
+          caption: `Special Festive Discount with code "FESTIVE20" ✨ Delivery in 24 hrs!`,
+        },
+        {
+          scene: 3,
+          visual: "Model laughing with family, celebrating with festive attire and stylish fit.",
+          audio: "Warm vocal sign-off",
+          caption: `Tap the bio link or message @${handle.replace('@', '')} to shop! 🛍️`,
+        },
+      ],
+      caption: `चाडपर्वको झिलिमिलीसँगै तपाईंको स्टाइल पनि चम्कियोस्! 🪔✨ Celebrate with ${bizName}'s handpicked festive collection. Tap bio link to shop!`,
+      audioCue: "Trending Nepali Acoustic Lo-Fi Beat / Tihar Folk Remix",
+      hashtags: ["#HappyTihar", "#Tihar2026", "#DeepawaliNepal", brandTag, "#FestiveNepal"],
+    },
+    facebook: {
+      headline: "🪔 चाडपर्व तथा दीपावलीको पावन अवसरमा हार्दिक शुभकामना!",
+      postText: `सयपत्रीको सुगन्ध, झिलिमिली बत्तीको उज्यालो, अनि आत्मीय प्रेमको पावन अवसरमा तपाईं र तपाईंको परिवारमा सुख, शान्ति र समृद्धि छाओस्। 🪔✨\n\nयो विशेष उत्सवमा तपाईंको स्टाइललाई अझ विशेष बनाउन ${bizName} ले ल्याएको छ आकर्षक Festive Offers & Collections!\n\n🎁 Exclusive Festive Offer:\n• Use coupon code: "FESTIVE20" for Instant Discount\n• Free & Express Delivery across Nepal within 24 Hours\n• Cash on Delivery & All Digital Payments (eSewa, Khalti, Fonepay) accepted.`,
+      callToAction: `Visit www.${webDomain} or message us directly on WhatsApp to place your order today!`,
+      engagementQuestion: "यसपालिको उत्सवमा तपाईं कुन रङ्गको पहिरन रोज्दै हुनुहुन्छ? कमेन्टमा बताउनुहोला! 👇",
+      suggestedVisual: `High-resolution festive showcase: Golden hour lighting with brass Diyas and ${bizName} highlights.`,
+      hashtags: ["#FestiveCollection", brandTag, "#HappyTihar", "#FestiveOffers"],
+    },
+    whatsapp: {
+      broadcastMessage: `*Namaste from ${bizName}!* 🪔✨\n\nWishing you and your family a luminous, prosperous, and joyful festive season!\n\nAs our valued customer, we have reserved an exclusive festive treat for your celebrations:`,
+      bulletPoints: [
+        "🌟 *Special Festive Discount* with code: *FESTIVE20*",
+        "⚡ *Same-Day Delivery* inside Ring Road (Order before 2 PM)",
+        "🎁 *Complimentary Festive Gift Box* on qualifying orders",
+        "📲 Easy Payment via *eSewa, Khalti, Fonepay, or Cash on Delivery*",
+      ],
+      ctaLink: `https://${webDomain}/collections/festive`,
+      statusTeaser: `🪔 Celebrate with timeless elegance! Special discount with code FESTIVE20 — Shop now!`,
+    },
+    instagram: {
+      caption: `Glow brighter than the diyas this festive season. ✨ Captured in pure elegance and festive warmth. Celebrate with ${bizName}.\n\nCoupon code: FESTIVE20 for discount.\nLink in bio.`,
+      visualDirection: `Moody candle-lit flat lay with brass diyas, marigolds, and ${bizName} showcase.`,
+      storySticker: "Interactive Slider: 'Rate this festive look 🔥'",
+      hashtags: ["#FestiveElegance", brandTag, "#DiwaliVibes"],
+    },
+  };
+}
 
 export default function MarketingPage() {
   const [selectedBizFilter, setSelectedBizFilter] = useState<string>("");
@@ -203,7 +209,9 @@ export default function MarketingPage() {
   const [ceoPrompt, setCeoPrompt] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(INITIAL_TIHAR_CONTENT);
+  const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(() =>
+    buildDynamicContent("CodyNex Nepal", "@codynexnepal")
+  );
   const [previewPlatform, setPreviewPlatform] = useState<"TIKTOK" | "FACEBOOK" | "WHATSAPP">("TIKTOK");
   const [dispatchSuccess, setDispatchSuccess] = useState<{
     dispatches?: Array<{
@@ -218,9 +226,111 @@ export default function MarketingPage() {
   const [testAccountStatus, setTestAccountStatus] = useState<Record<string, string>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // Integrated Social Accounts Modal State
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [accountForm, setAccountForm] = useState<{
+    platform: "TIKTOK" | "FACEBOOK" | "WHATSAPP" | "INSTAGRAM";
+    accountName: string;
+    accountHandle: string;
+    pageOrPhoneId: string;
+    accessToken: string;
+    isConnected: boolean;
+  }>({
+    platform: "TIKTOK",
+    accountName: "CodyNex Nepal Official",
+    accountHandle: "@codynexnepal",
+    pageOrPhoneId: "tt_codynexnepal",
+    accessToken: "",
+    isConnected: true,
+  });
+  const [accountFormErr, setAccountFormErr] = useState<string | null>(null);
+  const [isSavingAccount, setIsSavingAccount] = useState(false);
+
   // Traditional campaign modal state
   const [openLegacyModal, setOpenLegacyModal] = useState(false);
   const [legacySubmitErr, setLegacySubmitErr] = useState<string | null>(null);
+
+  const currentBizName = businesses.find((b) => b.id === selectedBizFilter)?.name || "CodyNex Nepal";
+  const tiktokAccount = socialAccounts.find((a) => a.platform === "TIKTOK");
+  const facebookAccount = socialAccounts.find((a) => a.platform === "FACEBOOK");
+  const whatsappAccount = socialAccounts.find((a) => a.platform === "WHATSAPP");
+  const instagramAccount = socialAccounts.find((a) => a.platform === "INSTAGRAM");
+
+  const openCreateAccountModal = (platform?: "TIKTOK" | "FACEBOOK" | "WHATSAPP" | "INSTAGRAM") => {
+    setEditingAccountId(null);
+    const chosenPlatform = platform || "TIKTOK";
+    setAccountForm({
+      platform: chosenPlatform,
+      accountName: currentBizName,
+      accountHandle:
+        chosenPlatform === "TIKTOK"
+          ? "@codynexnepal"
+          : chosenPlatform === "WHATSAPP"
+          ? "+977 9743969482"
+          : `@${currentBizName.toLowerCase().replace(/[^a-z0-9]/g, "")}`,
+      pageOrPhoneId: chosenPlatform === "WHATSAPP" ? "+977 9743969482" : "",
+      accessToken: "",
+      isConnected: true,
+    });
+    setAccountFormErr(null);
+    setShowAccountModal(true);
+  };
+
+  const openEditAccountModal = (acc: SocialAccount) => {
+    setEditingAccountId(acc.id);
+    setAccountForm({
+      platform: acc.platform,
+      accountName: acc.accountName,
+      accountHandle: acc.accountHandle || "",
+      pageOrPhoneId: acc.pageOrPhoneId || "",
+      accessToken: "",
+      isConnected: acc.isConnected,
+    });
+    setAccountFormErr(null);
+    setShowAccountModal(true);
+  };
+
+  const handleSaveAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingAccount(true);
+    setAccountFormErr(null);
+    try {
+      await codynexApi.marketing.upsertSocialAccount({
+        ...(editingAccountId ? { id: editingAccountId } : {}),
+        businessId: selectedBizFilter || undefined,
+        platform: accountForm.platform,
+        accountName: accountForm.accountName.trim(),
+        accountHandle: accountForm.accountHandle.trim() || null,
+        pageOrPhoneId: accountForm.pageOrPhoneId.trim() || null,
+        ...(accountForm.accessToken ? { accessTokenEncrypted: accountForm.accessToken } : {}),
+        isConnected: accountForm.isConnected,
+        metadata: {
+          category: "Official Business Account",
+          verified: true,
+          updatedAt: new Date().toISOString(),
+        },
+      });
+      await socialAccountsQuery.refetch();
+      setShowAccountModal(false);
+      setStatusMessage(`Successfully saved ${accountForm.platform} account (${accountForm.accountHandle || accountForm.accountName}).`);
+    } catch (err) {
+      setAccountFormErr(toApiError(err).message);
+    } finally {
+      setIsSavingAccount(false);
+    }
+  };
+
+  const handleDeleteAccount = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to disconnect and delete "${name}"?`)) return;
+    try {
+      await codynexApi.marketing.deleteSocialAccount(id);
+      await socialAccountsQuery.refetch();
+      setStatusMessage(`Disconnected account "${name}".`);
+    } catch (err) {
+      alert(toApiError(err).message);
+    }
+  };
 
   // Sync default prompt when occasion changes
   useEffect(() => {
@@ -261,7 +371,7 @@ export default function MarketingPage() {
       const res = await codynexApi.marketing.generateContent({
         occasionKey: selectedOccasion,
         businessId: selectedBizFilter || undefined,
-        businessName: activeBiz?.name || "Aliza Wears",
+        businessName: activeBiz?.name || "CodyNex Nepal",
         customPrompt: ceoPrompt,
         channels: targetChannels,
         brandVoice,
@@ -405,7 +515,7 @@ export default function MarketingPage() {
               onChange={(e) => setSelectedBizFilter(e.target.value)}
               className="h-9 rounded-md border border-surface-border bg-surface px-3 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-brand"
             >
-              <option value="">All Businesses (Aliza Wears)</option>
+              <option value="">All Businesses ({businesses.length > 0 ? businesses[0].name : "All Brands"})</option>
               {businesses.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -485,9 +595,19 @@ export default function MarketingPage() {
 
                 {/* Target Channels Selection */}
                 <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
-                    Publishing to Official Accounts
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+                      Publishing to Official Accounts
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("accounts")}
+                      className="text-[11px] font-medium text-brand hover:underline flex items-center gap-1"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Manage / Connect Platforms
+                    </button>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -499,7 +619,7 @@ export default function MarketingPage() {
                       }`}
                     >
                       <Video className="h-3.5 w-3.5" />
-                      TikTok (@alizawears_np)
+                      TikTok ({tiktokAccount?.accountHandle || "@codynexnepal"})
                       {targetChannels.includes("TIKTOK") && <Check className="h-3 w-3" />}
                     </button>
 
@@ -513,7 +633,7 @@ export default function MarketingPage() {
                       }`}
                     >
                       <Facebook className="h-3.5 w-3.5" />
-                      Facebook Page
+                      Facebook ({facebookAccount?.accountName || "Official Page"})
                       {targetChannels.includes("FACEBOOK") && <Check className="h-3 w-3" />}
                     </button>
 
@@ -527,8 +647,22 @@ export default function MarketingPage() {
                       }`}
                     >
                       <MessageCircle className="h-3.5 w-3.5" />
-                      WhatsApp Broadcast
+                      WhatsApp ({whatsappAccount?.accountHandle || whatsappAccount?.pageOrPhoneId || "+977 9743969482"})
                       {targetChannels.includes("WHATSAPP") && <Check className="h-3 w-3" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleToggleChannel("INSTAGRAM")}
+                      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                        targetChannels.includes("INSTAGRAM")
+                          ? "bg-rose-600 text-white shadow-sm"
+                          : "border border-surface-border bg-surface text-ink-muted opacity-60"
+                      }`}
+                    >
+                      <Share2 className="h-3.5 w-3.5" />
+                      Instagram ({instagramAccount?.accountHandle || `@${currentBizName.toLowerCase().replace(/[^a-z0-9]/g, "")}`})
+                      {targetChannels.includes("INSTAGRAM") && <Check className="h-3 w-3" />}
                     </button>
                   </div>
                 </div>
@@ -704,11 +838,11 @@ export default function MarketingPage() {
                             <div className="flex items-center gap-2">
                               <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-rose-500 to-amber-500 p-0.5">
                                 <div className="h-full w-full rounded-full bg-black flex items-center justify-center text-[10px] font-bold">
-                                  AW
+                                  CN
                                 </div>
                               </div>
                               <div>
-                                <span className="text-xs font-bold">@alizawears_np</span>
+                                <span className="text-xs font-bold">@codynexnepal</span>
                                 <span className="ml-1 text-[10px] text-neutral-400">· Official TikTok</span>
                               </div>
                             </div>
@@ -789,11 +923,13 @@ export default function MarketingPage() {
                           <div className="flex items-center justify-between border-b border-surface-border pb-3">
                             <div className="flex items-center gap-2.5">
                               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white font-bold text-xs">
-                                AW
+                                {(facebookAccount?.accountName || currentBizName).slice(0, 2).toUpperCase()}
                               </div>
                               <div>
                                 <div className="flex items-center gap-1.5">
-                                  <h4 className="text-xs font-bold text-ink">Aliza Wears Official</h4>
+                                  <h4 className="text-xs font-bold text-ink">
+                                    {facebookAccount?.accountName || currentBizName}
+                                  </h4>
                                   <CheckCircle2 className="h-3.5 w-3.5 fill-blue-500 text-white" />
                                 </div>
                                 <p className="text-[10px] text-ink-muted">Just now · 🌍 Public</p>
@@ -859,10 +995,14 @@ export default function MarketingPage() {
                               </div>
                               <div>
                                 <div className="flex items-center gap-1.5">
-                                  <h4 className="text-xs font-bold text-emerald-950">Aliza Wears Concierge</h4>
+                                  <h4 className="text-xs font-bold text-emerald-950">
+                                    {whatsappAccount?.accountName || `${currentBizName} Concierge`}
+                                  </h4>
                                   <Badge tone="green">Verified Business</Badge>
                                 </div>
-                                <p className="text-[10px] text-emerald-800">VIP Customer Broadcast List</p>
+                                <p className="text-[10px] text-emerald-800">
+                                  {whatsappAccount?.accountHandle || whatsappAccount?.pageOrPhoneId || "VIP Customer Broadcast List"}
+                                </p>
                               </div>
                             </div>
                           </div>
@@ -958,76 +1098,130 @@ export default function MarketingPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-ink">Connected Official Social Channels</h3>
+                <h3 className="text-sm font-bold text-ink">Integrated Social Media Platforms</h3>
                 <p className="text-xs text-ink-muted">
-                  Official verified handles powering automated CEO content dispatches across TikTok, Meta, and WhatsApp.
+                  Connect and manage your official TikTok, Facebook, WhatsApp, and Instagram accounts for live automated publishing and audience engagement.
                 </p>
               </div>
+              <Button size="sm" onClick={() => openCreateAccountModal()}>
+                <Plus className="h-4 w-4" />
+                Integrate New Platform
+              </Button>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              {socialAccounts.map((acc) => (
-                <Card key={acc.id} className="p-5 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-10 w-10 items-center justify-center rounded-lg text-white font-bold ${
-                          acc.platform === "FACEBOOK"
-                            ? "bg-blue-600"
-                            : acc.platform === "TIKTOK"
-                            ? "bg-black"
-                            : acc.platform === "WHATSAPP"
-                            ? "bg-emerald-600"
-                            : "bg-rose-600"
-                        }`}
-                      >
-                        {acc.platform === "FACEBOOK" && <Facebook className="h-5 w-5" />}
-                        {acc.platform === "TIKTOK" && <Video className="h-5 w-5" />}
-                        {acc.platform === "WHATSAPP" && <MessageCircle className="h-5 w-5" />}
-                        {acc.platform === "INSTAGRAM" && <Share2 className="h-5 w-5" />}
+            {socialAccounts.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-surface-border bg-surface-muted/30 p-8 text-center space-y-4">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand/10 text-brand">
+                  <Share2 className="h-6 w-6" />
+                </div>
+                <div className="max-w-md mx-auto space-y-1">
+                  <h4 className="text-sm font-bold text-ink">No Social Platforms Integrated Yet</h4>
+                  <p className="text-xs text-ink-muted leading-relaxed">
+                    Integrate your own official TikTok, Facebook Page, WhatsApp Business, or Instagram accounts. You can customize handles, phone numbers, and keys for instant CEO automated publishing.
+                  </p>
+                </div>
+                <div className="flex flex-wrap justify-center gap-2 pt-2">
+                  <Button size="sm" onClick={() => openCreateAccountModal("TIKTOK")}>
+                    <Video className="h-3.5 w-3.5" />
+                    Connect TikTok
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => openCreateAccountModal("FACEBOOK")}>
+                    <Facebook className="h-3.5 w-3.5" />
+                    Connect Facebook
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => openCreateAccountModal("WHATSAPP")}>
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    Connect WhatsApp
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => openCreateAccountModal("INSTAGRAM")}>
+                    <Share2 className="h-3.5 w-3.5" />
+                    Connect Instagram
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {socialAccounts.map((acc) => (
+                  <Card key={acc.id} className="p-5 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`flex h-10 w-10 items-center justify-center rounded-lg text-white font-bold ${
+                            acc.platform === "FACEBOOK"
+                              ? "bg-blue-600"
+                              : acc.platform === "TIKTOK"
+                              ? "bg-black"
+                              : acc.platform === "WHATSAPP"
+                              ? "bg-emerald-600"
+                              : "bg-rose-600"
+                          }`}
+                        >
+                          {acc.platform === "FACEBOOK" && <Facebook className="h-5 w-5" />}
+                          {acc.platform === "TIKTOK" && <Video className="h-5 w-5" />}
+                          {acc.platform === "WHATSAPP" && <MessageCircle className="h-5 w-5" />}
+                          {acc.platform === "INSTAGRAM" && <Share2 className="h-5 w-5" />}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="text-sm font-bold text-ink">{acc.accountName}</h4>
+                            {acc.isConnected && (
+                              <CheckCircle2 className="h-4 w-4 fill-emerald-500 text-white" />
+                            )}
+                          </div>
+                          <p className="text-xs text-ink-muted">{acc.accountHandle ?? "Handle not configured"}</p>
+                        </div>
+                      </div>
+                      <Badge tone={acc.isConnected ? "green" : "gray"}>
+                        {acc.isConnected ? "CONNECTED" : "OFFLINE"}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs border-t border-surface-border pt-3">
+                      <div>
+                        <span className="text-[11px] text-ink-muted">Channel ID / Phone:</span>
+                        <p className="font-mono text-xs text-ink truncate">{acc.pageOrPhoneId ?? "Default"}</p>
                       </div>
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <h4 className="text-sm font-bold text-ink">{acc.accountName}</h4>
-                          {acc.isConnected && (
-                            <CheckCircle2 className="h-4 w-4 fill-emerald-500 text-white" />
-                          )}
-                        </div>
-                        <p className="text-xs text-ink-muted">{acc.accountHandle ?? "Handle not configured"}</p>
+                        <span className="text-[11px] text-ink-muted">Reach / Status:</span>
+                        <p className="font-bold text-xs text-ink">{String(acc.metadata?.followers ?? "Active API")}</p>
                       </div>
                     </div>
-                    <Badge tone={acc.isConnected ? "green" : "gray"}>
-                      {acc.isConnected ? "CONNECTED" : "OFFLINE"}
-                    </Badge>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs border-t border-surface-border pt-3">
-                    <div>
-                      <span className="text-[11px] text-ink-muted">Channel ID:</span>
-                      <p className="font-mono text-xs text-ink truncate">{acc.pageOrPhoneId ?? "Default"}</p>
+                    <div className="flex items-center justify-between pt-2 border-t border-surface-border">
+                      <span className="text-[11px] text-ink-muted">
+                        {testAccountStatus[acc.id] || "Ready for instant dispatch"}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleTestAccount(acc.id)}
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          Test
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEditAccountModal(acc)}
+                        >
+                          <Edit className="h-3 w-3" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                          onClick={() => handleDeleteAccount(acc.id, acc.accountName)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-[11px] text-ink-muted">Reach / Followers:</span>
-                      <p className="font-bold text-xs text-ink">{String(acc.metadata?.followers ?? "Verified Account")}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[11px] text-ink-muted">
-                      {testAccountStatus[acc.id] || "Ready for instant dispatch"}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleTestAccount(acc.id)}
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                      Test Connection
-                    </Button>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1165,6 +1359,112 @@ export default function MarketingPage() {
           <Button type="submit" variant="dark" loading={isLegacySubmitting}>
             Submit Campaign
           </Button>
+        </form>
+      </Modal>
+
+      {/* Integrate / Edit Social Account Modal */}
+      <Modal
+        open={showAccountModal}
+        onClose={() => setShowAccountModal(false)}
+        title={editingAccountId ? "Edit Social Media Platform" : "Integrate Your Social Media Platform"}
+      >
+        <form onSubmit={handleSaveAccount} className="space-y-4">
+          {accountFormErr && (
+            <div className="rounded-md bg-rose-50 p-3 text-xs text-rose-700 border border-rose-200">
+              {accountFormErr}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-ink-muted mb-1">Select Platform *</label>
+            <select
+              value={accountForm.platform}
+              onChange={(e) =>
+                setAccountForm({
+                  ...accountForm,
+                  platform: e.target.value as "TIKTOK" | "FACEBOOK" | "WHATSAPP" | "INSTAGRAM",
+                })
+              }
+              className="w-full h-9 rounded-md border border-surface-border bg-surface px-3 text-xs text-ink focus:ring-1 focus:ring-brand"
+            >
+              <option value="TIKTOK">TikTok</option>
+              <option value="FACEBOOK">Facebook Page</option>
+              <option value="WHATSAPP">WhatsApp Business</option>
+              <option value="INSTAGRAM">Instagram</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-ink-muted mb-1">
+              Account / Business Name *
+            </label>
+            <Input
+              required
+              placeholder="e.g. CodyNex Nepal Official"
+              value={accountForm.accountName}
+              onChange={(e) => setAccountForm({ ...accountForm, accountName: e.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-ink-muted mb-1">
+                Account Handle / Username
+              </label>
+              <Input
+                placeholder={accountForm.platform === "TIKTOK" ? "@codynexnepal" : "@username"}
+                value={accountForm.accountHandle}
+                onChange={(e) => setAccountForm({ ...accountForm, accountHandle: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-muted mb-1">
+                {accountForm.platform === "WHATSAPP" ? "Phone Number (+977...)" : "Page / Channel ID"}
+              </label>
+              <Input
+                placeholder={accountForm.platform === "WHATSAPP" ? "+977 9743969482" : "page_id_123"}
+                value={accountForm.pageOrPhoneId}
+                onChange={(e) => setAccountForm({ ...accountForm, pageOrPhoneId: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-ink-muted mb-1">
+              API Key / Access Token / Webhook Secret (Optional)
+            </label>
+            <Input
+              type="password"
+              placeholder="Enter developer access token or leave blank"
+              value={accountForm.accessToken}
+              onChange={(e) => setAccountForm({ ...accountForm, accessToken: e.target.value })}
+            />
+            <p className="mt-1 text-[11px] text-ink-muted">
+              Securely stored in your PostgreSQL database. Enables live API dispatches to your official accounts.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 pt-1">
+            <input
+              type="checkbox"
+              id="isConnectedCheck"
+              checked={accountForm.isConnected}
+              onChange={(e) => setAccountForm({ ...accountForm, isConnected: e.target.checked })}
+              className="h-4 w-4 rounded border-surface-border text-brand focus:ring-brand"
+            />
+            <label htmlFor="isConnectedCheck" className="text-xs font-medium text-ink cursor-pointer">
+              Active Connection (Enable instant automated CEO dispatch)
+            </label>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-surface-border">
+            <Button type="button" variant="outline" onClick={() => setShowAccountModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSavingAccount}>
+              {isSavingAccount ? "Saving..." : editingAccountId ? "Update Account" : "Integrate Account"}
+            </Button>
+          </div>
         </form>
       </Modal>
     </DashboardShell>

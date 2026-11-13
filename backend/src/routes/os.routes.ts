@@ -251,6 +251,12 @@ export function createOsRouter(): Router {
     requireParam('id', { uuid: true }),
     domainController.testSocialAccount,
   );
+  router.delete(
+    '/marketing/social-accounts/:id',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.deleteSocialAccount,
+  );
 
   router.get('/crm/leads', domainController.listLeads);
   router.post(

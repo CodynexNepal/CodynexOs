@@ -191,6 +191,7 @@ export const codynexApi = {
       api.get("/marketing/social-accounts", { params: businessId ? { businessId } : undefined }),
     upsertSocialAccount: (body: Record<string, unknown>) => api.post("/marketing/social-accounts", body),
     testSocialAccount: (id: string) => api.post(`/marketing/social-accounts/${id}/test`),
+    deleteSocialAccount: (id: string) => api.delete(`/marketing/social-accounts/${id}`),
   },
   crm: {
     leads: (stage?: string, businessId?: string) =>

@@ -15,6 +15,7 @@ describe('Digital Marketing, AI Content Creator & Official Social Dispatch', () 
       isConnected: true,
     }),
     saveSocialAccount: vi.fn().mockImplementation(async (a) => ({ id: 'acc-new', ...a })),
+    deleteSocialAccount: vi.fn().mockResolvedValue(true),
   } as any;
 
   const mockModelRouter = {
@@ -84,7 +85,7 @@ describe('Digital Marketing, AI Content Creator & Official Social Dispatch', () 
     expect(result.dispatches).toHaveLength(3);
     expect(result.dispatches.map((d) => d.channel)).toEqual(['TIKTOK', 'FACEBOOK', 'WHATSAPP']);
     expect(result.dispatches[0].status).toBe('PUBLISHED');
-    expect(result.dispatches[0].externalUrl).toContain('tiktok.com');
+    expect(result.dispatches[0].externalUrl).toContain('tiktok.com/@codynexnepal');
     expect(result.dispatches[1].externalUrl).toContain('facebook.com');
     expect(result.dispatches[2].externalUrl).toContain('wa.me');
 
@@ -112,5 +113,46 @@ describe('Digital Marketing, AI Content Creator & Official Social Dispatch', () 
     const testResult = await service.testAccountConnection('acc-1');
     expect(testResult.success).toBe(true);
     expect(testResult.message).toContain('FACEBOOK');
+  });
+
+  it('dynamically connects, lists, tests, and deletes user custom social accounts', async () => {
+    mockRepo.saveSocialAccount = vi.fn().mockResolvedValue({
+      id: 'custom-tt-1',
+      platform: 'TIKTOK',
+      accountName: 'CodyNex Nepal Official',
+      accountHandle: '@codynexnepal',
+      isConnected: true,
+    });
+    mockRepo.findSocialAccounts = vi.fn().mockResolvedValue([
+      {
+        id: 'custom-tt-1',
+        platform: 'TIKTOK',
+        accountName: 'CodyNex Nepal Official',
+        accountHandle: '@codynexnepal',
+        isConnected: true,
+      },
+    ]);
+    mockRepo.findSocialAccountById = vi.fn().mockResolvedValue({
+      id: 'custom-tt-1',
+      platform: 'TIKTOK',
+      accountName: 'CodyNex Nepal Official',
+      accountHandle: '@codynexnepal',
+      isConnected: true,
+    });
+    mockRepo.deleteSocialAccount = vi.fn().mockResolvedValue(true);
+
+    const saved = await service.saveSocialAccount({
+      platform: 'TIKTOK',
+      accountName: 'CodyNex Nepal Official',
+      accountHandle: '@codynexnepal',
+    });
+    expect(saved.accountHandle).toBe('@codynexnepal');
+
+    const accounts = await service.listSocialAccounts();
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].accountHandle).toBe('@codynexnepal');
+
+    const deleted = await service.deleteSocialAccount('custom-tt-1');
+    expect(deleted).toBe(true);
   });
 });
