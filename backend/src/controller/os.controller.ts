@@ -15,6 +15,7 @@ import { getRequiredParam } from '../decorators/http.decorator';
 import { STATUS_CODE } from '../constant/statusCode.interface';
 import { ApprovalStatus, TaskStatus } from '../constant/enum.constant';
 import { ApiError } from '../utils/api-error.util';
+import { socketServer } from '../socket/socket.server';
 
 export class OsController {
   constructor(
@@ -341,7 +342,31 @@ export class OsController {
         resourceId: id,
       });
 
+      if (req.user?.userId) {
+        await this.governanceRepo.markApprovalNotificationsRead(req.user.userId);
+        socketServer.emit('notification:all_read', { userId: req.user.userId, reason: 'approval_reviewed' });
+      }
+      socketServer.emit('approval:reviewed', { id, decision, approval });
+
       res.status(STATUS_CODE.OK).json({ success: true, data: approval });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  sendTestNotification = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const notification = await this.notificationService.notifyUser({
+        userId: req.user!.userId,
+        category: (req.body.category as string) || 'APPROVAL_REQUEST',
+        severity: (req.body.severity as 'INFO' | 'WARNING' | 'CRITICAL') || 'WARNING',
+        title: (req.body.title as string) || 'CEO Approval Needed: Production Deployment v1.2',
+        message:
+          (req.body.message as string) ||
+          'AI Engineering department requests sign-off for merging and deploying to production.',
+        linkUrl: (req.body.linkUrl as string) || '/deployments',
+      });
+      res.status(STATUS_CODE.CREATED).json({ success: true, data: notification });
     } catch (err) {
       next(err);
     }

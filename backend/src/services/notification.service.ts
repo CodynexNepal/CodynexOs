@@ -99,9 +99,14 @@ export class NotificationService {
 
     socketServer.emit('notification:created', {
       id: saved.id,
+      userId: saved.userId,
       category: saved.category,
       severity: saved.severity,
       title: saved.title,
+      message: saved.message,
+      linkUrl: saved.linkUrl,
+      isRead: false,
+      createdAt: saved.createdAt,
     });
 
     return saved;
@@ -111,11 +116,15 @@ export class NotificationService {
     return this.governanceRepo.findNotifications(userId);
   }
 
-  markRead(id: string, userId: string) {
-    return this.governanceRepo.markNotificationRead(id, userId);
+  async markRead(id: string, userId: string) {
+    const res = await this.governanceRepo.markNotificationRead(id, userId);
+    socketServer.emit('notification:read', { id, userId });
+    return res;
   }
 
-  markAllRead(userId: string) {
-    return this.governanceRepo.markAllNotificationsRead(userId);
+  async markAllRead(userId: string) {
+    const res = await this.governanceRepo.markAllNotificationsRead(userId);
+    socketServer.emit('notification:all_read', { userId });
+    return res;
   }
 }

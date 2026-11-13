@@ -788,9 +788,43 @@ export class EngineeringService {
       title?: string;
       html_url?: string;
       message?: string;
+      errors?: Array<{ message?: string; field?: string; code?: string }>;
     };
+
     if (!prRes.ok || !prJson.number) {
-      throw ApiError.badRequest(prJson.message || `GitHub PR creation failed (HTTP ${prRes.status})`);
+      // Check if PR already exists for this branch:
+      const alreadyExistsError = prJson.errors?.find((e) =>
+        /already exists/i.test(e.message || ''),
+      );
+      if (alreadyExistsError) {
+        const existingPrsRes = await fetch(
+          `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls?head=${encodeURIComponent(repo.owner)}:${encodeURIComponent(pushed.branchName)}&state=open`,
+          { headers },
+        );
+        if (existingPrsRes.ok) {
+          const list = (await existingPrsRes.json()) as Array<{
+            number: number;
+            title: string;
+            html_url: string;
+          }>;
+          if (list[0]) {
+            prJson.number = list[0].number;
+            prJson.title = list[0].title;
+            prJson.html_url = list[0].html_url;
+          }
+        }
+      }
+
+      if (!prJson.number) {
+        const errorDetails = prJson.errors
+          ?.map((e) => e.message)
+          .filter(Boolean)
+          .join('; ');
+        const friendlyMessage = errorDetails
+          ? `GitHub PR creation rejected (${prJson.message || 'Validation Failed'}): ${errorDetails}`
+          : prJson.message || `GitHub PR creation failed (HTTP ${prRes.status})`;
+        throw ApiError.badRequest(friendlyMessage);
+      }
     }
 
     const prRecord = await this.engRepo.savePullRequest({

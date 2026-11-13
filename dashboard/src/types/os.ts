@@ -113,6 +113,19 @@ export interface TaskLogItem {
   createdAt: string;
 }
 
+export interface NotificationItem {
+  id: string;
+  userId?: string;
+  category: string;
+  severity: "INFO" | "WARNING" | "CRITICAL";
+  title: string;
+  message: string;
+  linkUrl?: string | null;
+  channelSent?: string[];
+  isRead: boolean;
+  createdAt: string;
+}
+
 export interface ApprovalItem {
   id: string;
   projectId: string | null;

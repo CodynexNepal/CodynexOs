@@ -68,6 +68,13 @@ export class GovernanceRepository {
     return this.notifRepo.update({ userId, isRead: false }, { isRead: true });
   }
 
+  markApprovalNotificationsRead(userId: string) {
+    return this.notifRepo.update(
+      { userId, category: 'APPROVAL_REQUEST', isRead: false },
+      { isRead: true },
+    );
+  }
+
   appendAuditLog(data: Partial<AuditLogEntity>) {
     return this.auditRepo.save(this.auditRepo.create(data));
   }

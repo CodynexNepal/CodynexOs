@@ -12,9 +12,11 @@ import { useApiQuery } from "@/hooks/useApi";
 import { codynexApi } from "@/lib/codynexOs";
 import { toApiError } from "@/lib/axios";
 import { formatDateTime } from "@/lib/utils";
+import { useNotifications } from "@/hooks/useNotifications";
 import type { ApprovalItem } from "@/types/os";
 
 export default function DeploymentCenterPage() {
+  const { refetch: refetchNotifications } = useNotifications();
   const { data, loading, error, refetch } = useApiQuery<ApprovalItem[]>(() =>
     codynexApi.approvals.list()
   );
@@ -31,6 +33,7 @@ export default function DeploymentCenterPage() {
         ...(notes[id]?.trim() ? { note: notes[id].trim() } : {}),
       });
       refetch();
+      refetchNotifications();
     } catch (err) {
       setActionErr(toApiError(err).message);
     } finally {

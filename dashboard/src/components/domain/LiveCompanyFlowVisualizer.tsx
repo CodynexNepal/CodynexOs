@@ -114,6 +114,7 @@ export function LiveCompanyFlowVisualizer({
   const [recentTasks, setRecentTasks] = useState<TaskItem[]>([]);
   const [recentLogs, setRecentLogs] = useState<TaskLogItem[]>([]);
   const [liveEvents, setLiveEvents] = useState<AgentActivityEvent[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [phaseFilter, setPhaseFilter] = useState<string>("ALL");
   const [selectedTaskForLogs, setSelectedTaskForLogs] = useState<TaskItem | null>(null);
   const [taskLogsList, setTaskLogsList] = useState<TaskLogItem[]>([]);
@@ -133,6 +134,7 @@ export function LiveCompanyFlowVisualizer({
       setRunningTasks(tasksFiltered);
       setRecentTasks(recentFiltered);
       setRecentLogs(payload.recentLogs ?? []);
+      setLastUpdated(new Date().toISOString());
     } catch {
       // Fallback gracefully
     } finally {
@@ -142,6 +144,11 @@ export function LiveCompanyFlowVisualizer({
 
   useEffect(() => {
     void fetchLiveActivity();
+    const pollInterval = window.setInterval(() => {
+      void fetchLiveActivity();
+    }, 10_000);
+
+    return () => window.clearInterval(pollInterval);
   }, [fetchLiveActivity]);
 
   // Real-time WebSocket listener
@@ -313,9 +320,20 @@ export function LiveCompanyFlowVisualizer({
         </div>
 
         <div className="flex items-center gap-2">
+          <span className="hidden text-[10px] tabular-nums text-ink-muted md:inline">
+            {lastUpdated ? `Updated ${formatDateTime(lastUpdated)}` : "Connecting to live feed…"}
+          </span>
           {/* Tabs */}
-          <div className="flex items-center rounded-md border border-surface-border bg-surface p-1">
+          <div
+            aria-label="Live workforce views"
+            className="flex items-center rounded-md border border-surface-border bg-surface p-1"
+            role="tablist"
+          >
             <button
+              aria-controls="workforce-view"
+              aria-selected={tab === "FLOW"}
+              id="workforce-tab-flow"
+              role="tab"
               type="button"
               onClick={() => setTab("FLOW")}
               className={cn(
@@ -328,6 +346,10 @@ export function LiveCompanyFlowVisualizer({
               Company Flow
             </button>
             <button
+              aria-controls="workforce-view"
+              aria-selected={tab === "PARALLEL_AGENTS"}
+              id="workforce-tab-agents"
+              role="tab"
               type="button"
               onClick={() => setTab("PARALLEL_AGENTS")}
               className={cn(
@@ -340,6 +362,10 @@ export function LiveCompanyFlowVisualizer({
               Parallel Agents ({runningTasks.length})
             </button>
             <button
+              aria-controls="workforce-view"
+              aria-selected={tab === "STEP_FEED"}
+              id="workforce-tab-feed"
+              role="tab"
               type="button"
               onClick={() => setTab("STEP_FEED")}
               className={cn(
@@ -353,13 +379,31 @@ export function LiveCompanyFlowVisualizer({
             </button>
           </div>
 
-          <Button variant="outline" size="sm" onClick={fetchLiveActivity} loading={loading}>
+          <Button
+            aria-label="Refresh live workforce activity"
+            title="Refresh live workforce activity"
+            variant="outline"
+            size="sm"
+            onClick={fetchLiveActivity}
+            loading={loading}
+          >
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
 
-      <div className="p-5">
+      <div
+        aria-labelledby={
+          tab === "FLOW"
+            ? "workforce-tab-flow"
+            : tab === "PARALLEL_AGENTS"
+              ? "workforce-tab-agents"
+              : "workforce-tab-feed"
+        }
+        className="p-5"
+        id="workforce-view"
+        role="tabpanel"
+      >
         {/* TAB 1: COMPANY FLOW PIPELINE (CEO -> COO -> CTO -> Parallel Developers -> QA -> DevOps) */}
         {tab === "FLOW" && (
           <div className="space-y-6">

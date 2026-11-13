@@ -256,6 +256,7 @@ export const codynexApi = {
     list: () => api.get("/notifications"),
     markRead: (id: string) => api.patch(`/notifications/${id}/read`),
     markAllRead: () => api.post("/notifications/read-all"),
+    sendTest: (body?: Record<string, unknown>) => api.post("/notifications/test", body || {}),
   },
   auditLogs: () => api.get("/audit-logs"),
   settings: {

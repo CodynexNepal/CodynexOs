@@ -258,6 +258,19 @@ export class WorkspaceService {
       await this.runGit(repoDir, ['pull', '--rebase', 'origin', clean], params.token).catch(() => {});
     }
 
+    // Verify branch has new commits compared to the default branch
+    const logAhead = await this.runGit(repoDir, [
+      'log',
+      `origin/${params.defaultBranch}..HEAD`,
+      '--oneline',
+    ]).catch(() => ({ stdout: '' }));
+
+    if (!logAhead.stdout.trim()) {
+      throw ApiError.badRequest(
+        `Cannot create Pull Request: branch '${clean}' has no new commits or changes compared to '${params.defaultBranch}'. Please edit or create files in the workspace before pushing.`,
+      );
+    }
+
     const shaRes = await this.runGit(repoDir, ['rev-parse', 'HEAD']);
     await this.runGit(repoDir, ['push', '-u', 'origin', clean], params.token);
     return { commitSha: shaRes.stdout.trim(), branchName: clean };

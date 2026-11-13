@@ -13,6 +13,9 @@ export function useDomainSocket(onEvent: (eventName: string, payload?: unknown) 
 
     const handleTask = (data?: unknown) => onEvent("task:updated", data);
     const handleNotif = (data?: unknown) => onEvent("notification:created", data);
+    const handleNotifRead = (data?: unknown) => onEvent("notification:read", data);
+    const handleNotifAllRead = (data?: unknown) => onEvent("notification:all_read", data);
+    const handleApprovalReviewed = (data?: unknown) => onEvent("approval:reviewed", data);
     const handleStep = (data?: unknown) => onEvent("task:step", data);
     const handleActivity = (data?: unknown) => onEvent("agent:activity", data);
     const handleLog = (data?: unknown) => onEvent("task:log", data);
@@ -20,6 +23,9 @@ export function useDomainSocket(onEvent: (eventName: string, payload?: unknown) 
 
     socket.on("task:updated", handleTask);
     socket.on("notification:created", handleNotif);
+    socket.on("notification:read", handleNotifRead);
+    socket.on("notification:all_read", handleNotifAllRead);
+    socket.on("approval:reviewed", handleApprovalReviewed);
     socket.on("task:step", handleStep);
     socket.on("agent:activity", handleActivity);
     socket.on("task:log", handleLog);
@@ -28,6 +34,9 @@ export function useDomainSocket(onEvent: (eventName: string, payload?: unknown) 
     return () => {
       socket.off("task:updated", handleTask);
       socket.off("notification:created", handleNotif);
+      socket.off("notification:read", handleNotifRead);
+      socket.off("notification:all_read", handleNotifAllRead);
+      socket.off("approval:reviewed", handleApprovalReviewed);
       socket.off("task:step", handleStep);
       socket.off("agent:activity", handleActivity);
       socket.off("task:log", handleLog);

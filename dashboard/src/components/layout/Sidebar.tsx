@@ -6,6 +6,7 @@ import { LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { OS_NAVIGATION, isActivePath } from "@/constants/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
+import { useNotifications } from "@/hooks/useNotifications";
 import { CodyNexLogoMark } from "@/components/ui/CodyNexLogo";
 import { cn, initials } from "@/lib/utils";
 
@@ -26,6 +27,7 @@ export function BrandMark({ collapsed = false }: { collapsed?: boolean }) {
 export function Sidebar() {
   const { user, logout } = useAuth();
   const { collapsed, setCollapsed } = useSidebar();
+  const { unreadCount, pendingApprovalsCount } = useNotifications();
   const pathname = usePathname() ?? "/overview";
 
   return (
@@ -62,21 +64,48 @@ export function Sidebar() {
               {group.items.map((item) => {
                 const active = isActivePath(pathname, item.href);
                 const Icon = item.icon;
+                const isNotif = item.href === "/notifications";
+                const isDeploy = item.href === "/deployments";
+                const showNotifBadge = isNotif && unreadCount > 0;
+                const showDeployBadge = isDeploy && pendingApprovalsCount > 0;
+
                 return (
                   <li key={item.href}>
                     <Link
                       href={item.href}
                       title={collapsed ? item.label : undefined}
                       className={cn(
-                        "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium transition-colors",
+                        "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium transition-colors",
                         active
                           ? "bg-brand text-brand-ink font-semibold"
                           : "text-neutral-300 hover:bg-white/10 hover:text-white",
                         collapsed && "justify-center px-2"
                       )}
                     >
-                      <Icon className="h-4 w-4 shrink-0" aria-hidden />
-                      {!collapsed && <span className="truncate">{item.label}</span>}
+                      <span className="relative">
+                        <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                        {collapsed && showNotifBadge && (
+                          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-600 ring-2 ring-brand-ink" />
+                        )}
+                        {collapsed && showDeployBadge && (
+                          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-brand-ink" />
+                        )}
+                      </span>
+                      {!collapsed && (
+                        <>
+                          <span className="truncate">{item.label}</span>
+                          {showNotifBadge && (
+                            <span className="ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white shadow-sm">
+                              {unreadCount > 9 ? "9+" : unreadCount}
+                            </span>
+                          )}
+                          {showDeployBadge && (
+                            <span className="ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-black shadow-sm">
+                              {pendingApprovalsCount}
+                            </span>
+                          )}
+                        </>
+                      )}
                     </Link>
                   </li>
                 );

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Menu, Moon, Sun, Terminal } from "lucide-react";
 import { useSidebar } from "@/hooks/useSidebar";
 import { useTheme } from "@/hooks/useTheme";
+import { NotificationDropdown } from "@/components/layout/NotificationDropdown";
 
 export function Header({ title, subtitle }: { title: string; subtitle?: string }) {
   const { setMobileOpen } = useSidebar();
@@ -34,6 +35,7 @@ export function Header({ title, subtitle }: { title: string; subtitle?: string }
           <Terminal className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Issue Command</span>
         </Link>
+        <NotificationDropdown />
         <button
           type="button"
           onClick={toggleTheme}

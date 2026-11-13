@@ -5,11 +5,13 @@ import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { OS_NAVIGATION, isActivePath } from "@/constants/navigation";
 import { useSidebar } from "@/hooks/useSidebar";
+import { useNotifications } from "@/hooks/useNotifications";
 import { BrandMark } from "./Sidebar";
 import { cn } from "@/lib/utils";
 
 export function MobileSidebar() {
   const { mobileOpen, setMobileOpen } = useSidebar();
+  const { unreadCount, pendingApprovalsCount } = useNotifications();
   const pathname = usePathname() ?? "/overview";
 
   if (!mobileOpen) return null;
@@ -43,6 +45,11 @@ export function MobileSidebar() {
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const active = isActivePath(pathname, item.href);
+                  const isNotif = item.href === "/notifications";
+                  const isDeploy = item.href === "/deployments";
+                  const showNotifBadge = isNotif && unreadCount > 0;
+                  const showDeployBadge = isDeploy && pendingApprovalsCount > 0;
+
                   return (
                     <li key={item.href}>
                       <Link
@@ -56,7 +63,17 @@ export function MobileSidebar() {
                         )}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
-                        <span>{item.label}</span>
+                        <span className="truncate">{item.label}</span>
+                        {showNotifBadge && (
+                          <span className="ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white shadow-sm">
+                            {unreadCount > 9 ? "9+" : unreadCount}
+                          </span>
+                        )}
+                        {showDeployBadge && (
+                          <span className="ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-black shadow-sm">
+                            {pendingApprovalsCount}
+                          </span>
+                        )}
                       </Link>
                     </li>
                   );

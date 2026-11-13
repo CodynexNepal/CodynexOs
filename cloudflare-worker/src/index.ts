@@ -4,7 +4,7 @@ export interface Env {
 }
 
 export default {
-  async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+  async scheduled(_event: unknown, env: Env): Promise<void> {
     if (!env.CODYNEX_API_URL || !env.WORKER_TICK_SECRET) {
       return;
     }

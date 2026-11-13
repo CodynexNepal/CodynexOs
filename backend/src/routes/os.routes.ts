@@ -305,6 +305,7 @@ export function createOsRouter(): Router {
   );
 
   router.get('/notifications', osController.notifications);
+  router.post('/notifications/test', osController.sendTestNotification);
   router.patch(
     '/notifications/:id/read',
     requireParam('id', { uuid: true }),
