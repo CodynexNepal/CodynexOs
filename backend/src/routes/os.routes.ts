@@ -26,7 +26,7 @@ import { UserRole } from '../constant/enum.constant';
 
 export function createOsRouter(): Router {
   const router = Router();
-  const { osController, domainController } = getOsContainer();
+  const { osController, domainController, hrController } = getOsContainer();
 
   // Signed worker heartbeat endpoint (for laptop-off Cloudflare Cron / GitHub Actions)
   router.post('/workers/tick', requireWorkerSecret, osController.workerTick);
@@ -320,6 +320,41 @@ export function createOsRouter(): Router {
     requireRoles(UserRole.CEO),
     validateDto(UpdateSettingDto),
     osController.upsertSetting,
+  );
+
+  // --- HR, AI Agent Contracts, Company Rules & Computational Token System ---
+  router.get('/hr/overview', hrController.getOverview);
+  router.get('/hr/contracts', hrController.listContracts);
+  router.get(
+    '/hr/contracts/:employeeId',
+    requireParam('employeeId', { uuid: true }),
+    hrController.getContract,
+  );
+  router.get('/hr/rules', hrController.listRules);
+  router.post('/hr/rules', requireRoles(UserRole.CEO, UserRole.ADMIN), hrController.createRule);
+  router.patch(
+    '/hr/rules/:id',
+    requireRoles(UserRole.CEO, UserRole.ADMIN),
+    requireParam('id', { uuid: true }),
+    hrController.updateRule,
+  );
+  router.get('/hr/violations', hrController.listViolations);
+  router.post(
+    '/hr/violations/enforce',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    hrController.issueDisciplinaryAction,
+  );
+  router.post(
+    '/hr/violations/:id/pardon',
+    requireRoles(UserRole.CEO),
+    requireParam('id', { uuid: true }),
+    hrController.pardonViolation,
+  );
+  router.get('/hr/tokens/transactions', hrController.listTokenTransactions);
+  router.post(
+    '/hr/tokens/grant',
+    requireRoles(UserRole.CEO, UserRole.ADMIN),
+    hrController.grantTokens,
   );
 
   return router;

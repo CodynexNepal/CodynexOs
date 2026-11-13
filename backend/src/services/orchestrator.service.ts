@@ -19,6 +19,7 @@ import {
 import { NotificationService } from './notification.service';
 import { AuditService } from './audit.service';
 import { EngineeringService } from './engineering.service';
+import { HrService } from './hr.service';
 import { previewDeployService } from './preview-deploy.service';
 import { dotEnvConfig } from '../configs/envConfig';
 import { socketServer } from '../socket/socket.server';
@@ -41,6 +42,7 @@ export class OrchestratorService {
     private readonly notificationService: NotificationService,
     private readonly auditService: AuditService,
     private readonly engineeringService?: EngineeringService,
+    private readonly hrService?: HrService,
     private readonly orgRepo: OrganizationRepository = new OrganizationRepository(),
   ) {}
 
@@ -339,14 +341,14 @@ export class OrchestratorService {
 
         const aiRes = await this.modelRouter.complete(
           {
-            systemPrompt: `${emp?.systemInstruction || ''}\nReturn JSON with keys: summary, files (array of {path, content}), deliverables (array of {phase, details}), risks (array). Write complete runnable TypeScript/Node/README files.`,
+            systemPrompt: `${emp?.systemInstruction || ''}\nReturn JSON with keys: summary, files (array of {path, content}), deliverables (array of {phase, details}), risks (array). The files array is mandatory for an implementation task: return one or more complete, runnable source files with non-empty content. Do not return an analysis-only report. Write complete TypeScript/Node/README files.`,
             userPrompt: `Trusted Company SOPs:\n${
               sops.length > 0
                 ? sops.map((s) => `- ${s.title}: ${s.contentMd.slice(0, 300)}`).join('\n')
                 : 'None'
             }\n\nTask:\n${wrapped}`,
             responseFormat: 'json',
-            maxOutputTokens: 2048,
+            maxOutputTokens: 8192,
           },
           {
             taskId: task.id,
@@ -383,10 +385,21 @@ export class OrchestratorService {
             : `codynex/task-${task.id.slice(0, 6)}`;
         let writtenFiles: string[] = [];
 
-        if (repoId && Array.isArray(parsed?.files) && parsed.files.length > 0) {
+        if (!repoId) {
+          throw new Error('Implementation workspace is unavailable: no repository was provisioned for this code task.');
+        }
+
+        if (Array.isArray(parsed?.files) && parsed.files.length > 0) {
           const validFiles = parsed.files.filter(
-            (f) => typeof f?.path === 'string' && typeof f?.content === 'string',
+            (f) =>
+              typeof f?.path === 'string' &&
+              f.path.trim().length > 0 &&
+              typeof f?.content === 'string' &&
+              f.content.trim().length > 0,
           );
+          if (validFiles.length === 0) {
+            throw new Error('Code generation returned no valid source files; the task cannot be completed without a workspace change.');
+          }
           const resWrite = await this.engineeringService.writeWorkspaceFiles(
             repoId,
             branchName,
@@ -394,6 +407,12 @@ export class OrchestratorService {
             task.project?.createdBy || this.workerId,
           );
           writtenFiles = resWrite.written;
+        } else {
+          throw new Error('Code generation returned no source files; the task cannot be completed without a workspace change.');
+        }
+
+        if (writtenFiles.length === 0) {
+          throw new Error('No source files were written to the workspace; the task cannot be completed.');
         }
 
         await this.reportStep({
@@ -978,6 +997,11 @@ export class OrchestratorService {
       });
 
       await this.taskRepo.appendLog(task.id, 'INFO', 'Task completed successfully', {}, execution.id);
+
+      if (this.hrService && task.assignedEmployeeId) {
+        await this.hrService.rewardTaskCompletion(task.id, task.assignedEmployeeId, 100).catch(() => {});
+      }
+
       socketServer.emit('task:updated', { taskId: task.id, status: TaskStatus.COMPLETED });
       socketServer.emit('agent:activity', {
         stepNumber: 100,
@@ -1016,6 +1040,10 @@ export class OrchestratorService {
           leaseExpiresAt: null,
         });
         await this.taskRepo.appendLog(task.id, 'ERROR', `Task failed permanently: ${msg}`, {}, execution.id);
+
+        if (this.hrService && task.assignedEmployeeId) {
+          await this.hrService.handleTaskFailure(task.id, task.assignedEmployeeId, msg).catch(() => {});
+        }
 
         if (task.project?.createdBy) {
           await this.notificationService.notifyUser({

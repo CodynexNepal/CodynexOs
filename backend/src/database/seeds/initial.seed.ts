@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { AppDataSource } from '../database-source';
 import { UserEntity } from '../../entities/user.entity';
 import { DepartmentEntity } from '../../entities/department.entity';
@@ -8,8 +9,21 @@ import { CompanyMemoryEntity } from '../../entities/company-memory.entity';
 import { KnowledgeDocumentEntity } from '../../entities/knowledge-document.entity';
 import { BusinessEntity } from '../../entities/business.entity';
 import { TaskEntity } from '../../entities/task.entity';
-import { AI_EMPLOYEE_SEEDS, DEPARTMENT_SEEDS } from '../../constant/company.constant';
-import { MemoryCategory, UserRole } from '../../constant/enum.constant';
+import { CompanyRuleEntity } from '../../entities/company-rule.entity';
+import { AgentContractEntity } from '../../entities/agent-contract.entity';
+import { AgentTokenTransactionEntity } from '../../entities/agent-token-transaction.entity';
+import {
+  AI_EMPLOYEE_SEEDS,
+  DEPARTMENT_SEEDS,
+  DEFAULT_COMPANY_RULES,
+  DEFAULT_AGENT_CONTRACT_TERMS,
+} from '../../constant/company.constant';
+import {
+  ContractStatus,
+  MemoryCategory,
+  TokenTransactionType,
+  UserRole,
+} from '../../constant/enum.constant';
 import { dotEnvConfig } from '../../configs/envConfig';
 import { hashPassword } from '../../utils/password.util';
 import { logger } from '../../utils/logger.util';
@@ -239,5 +253,73 @@ export async function runInitialSeed(): Promise<void> {
       }
     }
     logger.info(`Backfilled ${unassignedTasks.length} unassigned tasks to active department lead agents`);
+  }
+
+  // 10. Seed Company Rules
+  const ruleRepo = AppDataSource.getRepository(CompanyRuleEntity);
+  for (const r of DEFAULT_COMPANY_RULES) {
+    const existingRule = await ruleRepo.findOne({ where: { ruleCode: r.ruleCode } });
+    if (!existingRule) {
+      await ruleRepo.save(
+        ruleRepo.create({
+          ruleCode: r.ruleCode,
+          title: r.title,
+          description: r.description,
+          severity: r.severity,
+          defaultPenaltyTokens: r.defaultPenaltyTokens,
+          category: r.category,
+          isActive: true,
+        }),
+      );
+    }
+  }
+
+  // 11. Seed Binding Agent Contracts & Initial Token Wallets (1000 CNT Signing Bonus)
+  const contractRepo = AppDataSource.getRepository(AgentContractEntity);
+  const tokenTxRepo = AppDataSource.getRepository(AgentTokenTransactionEntity);
+  const allEmployees = await empRepo.find({ relations: ['department'] });
+
+  for (const [idx, emp] of allEmployees.entries()) {
+    const existingContract = await contractRepo.findOne({ where: { employeeId: emp.id } });
+    if (!existingContract) {
+      const deptCode = (emp.department?.slug || 'GEN').slice(0, 3).toUpperCase();
+      const numStr = String(idx + 1).padStart(3, '0');
+      const contractNumber = `CNT-${deptCode}-${numStr}`;
+      const signatureHash = crypto
+        .createHash('sha256')
+        .update(`${contractNumber}:${emp.slug}:${Date.now()}:CodyNex-OS`)
+        .digest('hex');
+
+      const contract = await contractRepo.save(
+        contractRepo.create({
+          employeeId: emp.id,
+          contractNumber,
+          title: `${emp.roleTitle} Employment & Code of Conduct Agreement`,
+          status: ContractStatus.ACTIVE,
+          tokenSalaryPerTask: 100,
+          tokenBalance: 1000,
+          stakedTokens: 0,
+          totalTokensEarned: 1000,
+          totalTokensPenalized: 0,
+          reputationScore: 100,
+          termsContentMd: DEFAULT_AGENT_CONTRACT_TERMS,
+          signedAt: new Date(),
+          signatureHash,
+          violationsCount: 0,
+          penaltiesCount: 0,
+        }),
+      );
+
+      await tokenTxRepo.save(
+        tokenTxRepo.create({
+          employeeId: emp.id,
+          contractId: contract.id,
+          amount: 1000,
+          type: TokenTransactionType.SIGNING_BONUS,
+          balanceAfter: 1000,
+          description: 'Initial employment signing bonus (Computational Tokens)',
+        }),
+      );
+    }
   }
 }

@@ -118,9 +118,21 @@ export class CommandService {
       /\b(read|list|fetch|import|scan|inspect)\b.*\b(repo|repos|repository|repositories)\b/i.test(
         lower,
       ) && Boolean(owner);
+    // A coding directive must enter the executable workspace pipeline even
+    // when the CEO does not explicitly say “GitHub” or “repository”. Before
+    // this, requests such as “write code for project Aliza Wears” could be
+    // replaced by an AI-generated analysis task, which only saved a report.
+    const isImplementationRequest =
+      /\b(write\s+(?:the\s+)?code|code|implement|build|scaffold|create|develop|update|fix|deploy)\b/i.test(
+        lower,
+      ) &&
+      /\b(app|application|api|backend|frontend|website|site|page|screen|component|feature|project|repo|repository|code|ui|ux|dashboard|landing)\b/i.test(
+        lower,
+      );
     const isRepoLifecycle =
-      /\b(github|commit|push|pull request|\bpr\b|repo|repository)\b/i.test(lower) &&
-      /\b(create|new|build|scaffold|update|fix|deploy)\b/i.test(lower);
+      isImplementationRequest ||
+      (/\b(github|commit|push|pull request|\bpr\b|repo|repository)\b/i.test(lower) &&
+        /\b(create|new|build|scaffold|update|fix|deploy)\b/i.test(lower));
 
     return { owner, repoName, isOrgInspect, isRepoLifecycle };
   }

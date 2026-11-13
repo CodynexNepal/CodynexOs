@@ -74,7 +74,7 @@ describe('AI COO CommandService planning & approval gating', () => {
     expect(savedTasks).toHaveLength(0);
   });
 
-  it('generates parallel frontend/backend tasks and QA dependency for engineering commands', async () => {
+  it('routes an engineering build directive through the executable workspace pipeline', async () => {
     const { service, savedTasks, savedDeps } = makeMocks();
     const res = await service.issueCommand({
       userId: 'ceo-1',
@@ -82,16 +82,30 @@ describe('AI COO CommandService planning & approval gating', () => {
     });
 
     expect(res.plannerSource).toBe('deterministic');
-    expect(res.createdTaskCount).toBe(6);
+    expect(res.createdTaskCount).toBe(4);
     expect(savedTasks.map((t) => t.taskType)).toEqual([
-      'architecture',
-      'ui_ux_design',
-      'code',
-      'code',
+      'repo_provision',
+      'code_generate',
       'qa_verify',
-      'devops_deploy',
+      'github_push_pr',
     ]);
-    expect(savedDeps).toHaveLength(8);
+    expect(savedDeps).toHaveLength(3);
+  });
+
+  it('does not let an AI planning response replace a write-code project directive with reports', async () => {
+    const { service, savedTasks } = makeMocks();
+    const res = await service.issueCommand({
+      userId: 'ceo-1',
+      instruction: 'Write code for the project Aliza Wears and complete the landing page.',
+    });
+
+    expect(res.plannerSource).toBe('deterministic');
+    expect(savedTasks.map((t) => t.taskType)).toEqual([
+      'repo_provision',
+      'code_generate',
+      'qa_verify',
+      'github_push_pr',
+    ]);
   });
 
   it('creates a CEO approval request for outbound campaign commands', async () => {

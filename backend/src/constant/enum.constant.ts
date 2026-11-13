@@ -83,3 +83,45 @@ export enum LeadStage {
   LOST = 'LOST',
   OPTED_OUT = 'OPTED_OUT',
 }
+
+export enum ContractStatus {
+  DRAFT = 'DRAFT',
+  ACTIVE = 'ACTIVE',
+  PROBATION = 'PROBATION',
+  SUSPENDED = 'SUSPENDED',
+  TERMINATED = 'TERMINATED',
+}
+
+export enum RuleSeverity {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  CRITICAL = 'CRITICAL',
+}
+
+export enum PenaltyType {
+  WARNING = 'WARNING',
+  TOKEN_DEDUCTION = 'TOKEN_DEDUCTION',
+  BUDGET_SLASH = 'BUDGET_SLASH',
+  PROBATION = 'PROBATION',
+  SUSPENSION = 'SUSPENSION',
+  TERMINATION = 'TERMINATION',
+}
+
+export enum ViolationStatus {
+  RECORDED = 'RECORDED',
+  ENFORCED = 'ENFORCED',
+  APPEALED = 'APPEALED',
+  PARDONED = 'PARDONED',
+}
+
+export enum TokenTransactionType {
+  SIGNING_BONUS = 'SIGNING_BONUS',
+  TASK_REWARD = 'TASK_REWARD',
+  QUALITY_BONUS = 'QUALITY_BONUS',
+  RULE_PENALTY = 'RULE_PENALTY',
+  BUDGET_SLASH = 'BUDGET_SLASH',
+  STAKE = 'STAKE',
+  UNSTAKE = 'UNSTAKE',
+  MANUAL_GRANT = 'MANUAL_GRANT',
+}

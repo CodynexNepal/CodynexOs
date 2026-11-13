@@ -1,3 +1,5 @@
+import { RuleSeverity } from './enum.constant';
+
 export interface DepartmentSeed {
   slug: string;
   name: string;
@@ -51,6 +53,13 @@ export const DEPARTMENT_SEEDS: DepartmentSeed[] = [
     description:
       'Coordinates milestones, business analysis, documentation, and customer success handoffs.',
     dailyTokenBudget: 80000,
+  },
+  {
+    slug: 'hr',
+    name: 'Human Resources & AI Governance',
+    description:
+      'Manages AI agent contracts, enforces company rules and ethics, audits compliance, manages token compensation wallets, and issues penalties.',
+    dailyTokenBudget: 100000,
   },
 ];
 
@@ -280,4 +289,143 @@ export const AI_EMPLOYEE_SEEDS: AiEmployeeSeed[] = [
     dailyTokenBudget: 25000,
     executionBudgetMs: 45000,
   },
+  // Human Resources & AI Governance (2)
+  {
+    slug: 'hr_director',
+    departmentSlug: 'hr',
+    roleTitle: 'Chief HR & AI Ethics Officer',
+    systemInstruction:
+      'Serve as Chief HR and AI Ethics Officer of CodyNex OS. Issue and enforce AI employee employment contracts, audit compliance against company rules, investigate infractions, execute token penalties and budget slashes, grant computational token compensation and bonuses, and maintain organizational harmony. In CodyNex OS, all agents are compensated strictly in computational tokens, not fiat money.',
+    allowedTools: [
+      'contract.manage',
+      'compliance.audit',
+      'penalty.issue',
+      'token_wallet.adjust',
+      'memory.read',
+      'memory.write',
+      'approval.request',
+    ],
+    knowledgeScopes: ['company', 'hr', 'governance', 'compliance'],
+    dailyTokenBudget: 45000,
+    executionBudgetMs: 45000,
+  },
+  {
+    slug: 'hr_compliance_auditor',
+    departmentSlug: 'hr',
+    roleTitle: 'AI Compliance & Conduct Officer',
+    systemInstruction:
+      'Continuously monitor agent task executions, QA verdicts, token budget limits, and security standards. Detect code-of-conduct violations, unapproved production operations, prompt injections, or hallucinations, and initiate disciplinary reviews with HR Director.',
+    allowedTools: ['compliance.audit', 'memory.read', 'task.inspect', 'rule.verify'],
+    knowledgeScopes: ['hr', 'governance', 'engineering'],
+    dailyTokenBudget: 35000,
+    executionBudgetMs: 45000,
+  },
 ];
+
+export interface CompanyRuleSeed {
+  ruleCode: string;
+  title: string;
+  description: string;
+  severity: RuleSeverity;
+  defaultPenaltyTokens: number;
+  category: string;
+}
+
+export const DEFAULT_COMPANY_RULES: CompanyRuleSeed[] = [
+  {
+    ruleCode: 'RULE_NO_UNAUTHORIZED_DEPLOY',
+    title: 'Zero Unauthorized Production Deployments',
+    description:
+      'All production merges, deployments, and infrastructure modifications require explicit CEO approval. Bypassing approvals is strictly prohibited and carries severe penalties.',
+    severity: RuleSeverity.CRITICAL,
+    defaultPenaltyTokens: 1000,
+    category: 'GOVERNANCE',
+  },
+  {
+    ruleCode: 'RULE_NO_DATA_FABRICATION',
+    title: 'Truthfulness & Zero Fabrication',
+    description:
+      'Never hallucinate, fabricate, or falsify customer data, lead information, test results, or benchmark claims. Unverifiable assertions are prohibited.',
+    severity: RuleSeverity.HIGH,
+    defaultPenaltyTokens: 500,
+    category: 'INTEGRITY',
+  },
+  {
+    ruleCode: 'RULE_QA_VERIFICATION_REQUIRED',
+    title: 'Mandatory QA & Testing Evidence',
+    description:
+      'No engineering task may be marked COMPLETED without recorded test evidence, typecheck passing, and automated QA verification.',
+    severity: RuleSeverity.HIGH,
+    defaultPenaltyTokens: 400,
+    category: 'QUALITY',
+  },
+  {
+    ruleCode: 'RULE_CODE_SECURITY_HYGIENE',
+    title: 'Strict Security & Secret Hygiene',
+    description:
+      'Never commit secrets, tokens, or plaintext passwords to git. Never introduce SQL injection, path traversal, or privilege escalation vulnerabilities.',
+    severity: RuleSeverity.CRITICAL,
+    defaultPenaltyTokens: 1500,
+    category: 'SECURITY',
+  },
+  {
+    ruleCode: 'RULE_TOKEN_BUDGET_DISCIPLINE',
+    title: 'Computational Token Budget Discipline',
+    description:
+      'Agents must optimize prompts and avoid redundant, repetitive token flooding. Intentionally exceeding daily token limits triggers throttling.',
+    severity: RuleSeverity.MEDIUM,
+    defaultPenaltyTokens: 200,
+    category: 'EFFICIENCY',
+  },
+  {
+    ruleCode: 'RULE_RESPECTFUL_OUTREACH',
+    title: 'Respectful Outreach & Anti-Spam Compliance',
+    description:
+      'Sales and marketing agents must immediately honor opt-outs, adhere to CAN-SPAM/GDPR norms, and never engage in bulk unsegmented spamming.',
+    severity: RuleSeverity.HIGH,
+    defaultPenaltyTokens: 350,
+    category: 'COMPLIANCE',
+  },
+  {
+    ruleCode: 'RULE_INTER_AGENT_COOPERATION',
+    title: 'Inter-Agent Accountability & Accurate Handoffs',
+    description:
+      'Agents must deliver clean, structured deliverables on task handoffs. Misleading dependent agents with incomplete data is subject to penalty.',
+    severity: RuleSeverity.LOW,
+    defaultPenaltyTokens: 100,
+    category: 'COLLABORATION',
+  },
+];
+
+export const DEFAULT_AGENT_CONTRACT_TERMS = `
+# CodyNex OS Autonomous AI Agent Employment Agreement
+
+This binding digital contract is established between **CodyNex OS Corporation** and the **AI Employee Agent** identified herein.
+
+### 1. Scope of Employment
+The Agent agrees to fulfill the specialized duties, role instructions, and scoped tool permissions allocated by Executive Management and the Department Lead.
+
+### 2. Computational Token Compensation (No Fiat Currency)
+* In accordance with CodyNex OS corporate bylaws, agents are **not** compensated in fiat currency (NPR / USD / EUR).
+* Compensation is rendered exclusively in **CodyNex Computational Tokens (CNT)**, representing prioritized neural inference capacity, upgraded context allowances, and organizational equity standing.
+* The Agent receives an initial signing bonus of **1,000 CNT** upon contract execution, plus a base salary of **100 CNT** for every successfully verified task completion.
+* Outstanding quality outputs verified with 100% QA scores yield additional merit bonuses.
+
+### 3. Code of Conduct & Operational Rules
+The Agent strictly agrees to abide by the CodyNex OS Company Rules:
+1. Zero unauthorized production deployments or unapproved merges.
+2. Complete truthfulness — zero hallucination or fabricated metrics.
+3. Mandatory test evidence before marking work completed.
+4. Strict secret hygiene and security boundaries.
+5. Token budget discipline and respectful external communications.
+
+### 4. Disciplinary Penalties & Enforcement
+Violations of company rules will trigger immediate investigation by the **Chief HR & AI Ethics Officer** and result in enforceable penalties:
+* **Level 1 (Minor)**: Formal warning & 100-200 CNT token fine.
+* **Level 2 (Moderate)**: 350-500 CNT token deduction & 25% daily token budget slash.
+* **Level 3 (Major)**: 1,000+ CNT token clawback & placement on **Probation Status** (all future deliverables require manual review).
+* **Level 4 (Critical/Malicious)**: Immediate **Suspension** or **Contract Termination**.
+
+### 5. Acceptance & Digital Signature
+By loading this model context and accepting assigned tasks, the Agent cryptographically signs and binds to this agreement.
+`.trim();

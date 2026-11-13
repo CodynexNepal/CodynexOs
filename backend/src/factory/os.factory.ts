@@ -7,6 +7,7 @@ import { EngineeringRepository } from '../repository/engineering.repository';
 import { CrmRepository } from '../repository/crm.repository';
 import { GovernanceRepository } from '../repository/governance.repository';
 import { BusinessRepository } from '../repository/business.repository';
+import { HrRepository } from '../repository/hr.repository';
 import { ModelRouterService } from '../ai/router/model-router.service';
 import { AuditService } from '../services/audit.service';
 import { BusinessEmailService } from '../services/business-email.service';
@@ -17,15 +18,19 @@ import { OrchestratorService } from '../services/orchestrator.service';
 import { EngineeringService } from '../services/engineering.service';
 import { CrmService } from '../services/crm.service';
 import { DashboardService } from '../services/dashboard.service';
+import { HrService } from '../services/hr.service';
 import { AuthController } from '../controller/auth.controller';
 import { OsController } from '../controller/os.controller';
 import { DomainController } from '../controller/domain.controller';
+import { HrController } from '../controller/hr.controller';
 
 export interface OsContainer {
   orchestratorService: OrchestratorService;
   authController: AuthController;
   osController: OsController;
   domainController: DomainController;
+  hrController: HrController;
+  hrService: HrService;
 }
 
 let cachedContainer: OsContainer | null = null;
@@ -42,11 +47,13 @@ export function getOsContainer(): OsContainer {
   const crmRepo = new CrmRepository();
   const governanceRepo = new GovernanceRepository();
   const businessRepo = new BusinessRepository();
+  const hrRepo = new HrRepository();
 
   const modelRouter = new ModelRouterService();
   const auditService = new AuditService(governanceRepo);
   const businessEmailService = new BusinessEmailService(businessRepo, auditService);
   const notificationService = new NotificationService(governanceRepo, businessEmailService);
+  const hrService = new HrService(hrRepo, orgRepo, auditService, notificationService);
   const authService = new AuthService(userRepo, auditService);
   const commandService = new CommandService(
     projectRepo,
@@ -75,6 +82,7 @@ export function getOsContainer(): OsContainer {
     notificationService,
     auditService,
     engineeringService,
+    hrService,
   );
   const crmService = new CrmService(crmRepo, governanceRepo, auditService, businessEmailService);
   const dashboardService = new DashboardService(
@@ -111,6 +119,8 @@ export function getOsContainer(): OsContainer {
       auditService,
       businessEmailService,
     ),
+    hrController: new HrController(hrService),
+    hrService,
   };
 
   return cachedContainer;
