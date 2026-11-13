@@ -28,23 +28,32 @@ export class OpenAiAdapter implements AiProviderAdapter {
 
     const model = req.model || dotEnvConfig.OPENAI_MODEL;
     const started = Date.now();
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: req.temperature ?? 0.2,
-        max_tokens: req.maxOutputTokens ?? 2048,
-        ...(req.responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {}),
-        messages: [
-          { role: 'system', content: req.systemPrompt },
-          { role: 'user', content: req.userPrompt },
-        ],
-      }),
-    });
+    let res: Response;
+    try {
+      res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: req.temperature ?? 0.2,
+          max_tokens: req.maxOutputTokens ?? 2048,
+          ...(req.responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {}),
+          messages: [
+            { role: 'system', content: req.systemPrompt },
+            { role: 'user', content: req.userPrompt },
+          ],
+        }),
+      });
+    } catch (err: any) {
+      throw new AiProviderError(
+        this.name,
+        'PROVIDER_ERROR',
+        `OpenAI connection failed: ${err?.message || err}`,
+      );
+    }
 
     const latencyMs = Date.now() - started;
     if (res.status === 429) {

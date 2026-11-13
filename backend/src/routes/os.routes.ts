@@ -167,6 +167,12 @@ export function createOsRouter(): Router {
     domainController.writeWorkspaceFiles,
   );
   router.post(
+    '/github/repos/:id/workspace/commit',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.commitWorkspace,
+  );
+  router.post(
     '/github/repos/:id/workspace/checks',
     requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
     requireParam('id', { uuid: true }),

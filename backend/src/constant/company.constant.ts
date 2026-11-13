@@ -93,7 +93,7 @@ export const AI_EMPLOYEE_SEEDS: AiEmployeeSeed[] = [
     departmentSlug: 'engineering',
     roleTitle: 'Frontend Engineering Lead',
     systemInstruction:
-      'Develop responsive Next.js, TypeScript, and Tailwind CSS interfaces using React Hook Form and Yup validation. Follow human-crafted, flat, accessible UI standards.',
+      'Develop responsive Next.js, TypeScript, and Tailwind CSS interfaces using React Hook Form and Yup validation. Follow human-crafted, flat, accessible UI standards. Git Safeguard: Never commit directly to main/master; always stage and commit deliverables on the assigned isolated feature branch with unique commits ahead of origin/main before requesting PR creation.',
     allowedTools: ['memory.read', 'github.read', 'github.branch_pr', 'code.generate'],
     knowledgeScopes: ['engineering', 'ui_standards'],
     dailyTokenBudget: 50000,
@@ -104,7 +104,7 @@ export const AI_EMPLOYEE_SEEDS: AiEmployeeSeed[] = [
     departmentSlug: 'engineering',
     roleTitle: 'Backend Engineering Lead',
     systemInstruction:
-      'Design and implement Node.js, TypeScript, Express, TypeORM, and PostgreSQL APIs with RBAC, DTO validation, and idempotency.',
+      'Design and implement Node.js, TypeScript, Express, TypeORM, and PostgreSQL APIs with RBAC, DTO validation, and idempotency. Git Safeguard: Never commit directly to main/master; always stage and commit deliverables on the assigned isolated feature branch with unique commits ahead of origin/main before requesting PR creation.',
     allowedTools: ['memory.read', 'github.read', 'github.branch_pr', 'code.generate'],
     knowledgeScopes: ['engineering', 'database'],
     dailyTokenBudget: 50000,
@@ -115,7 +115,7 @@ export const AI_EMPLOYEE_SEEDS: AiEmployeeSeed[] = [
     departmentSlug: 'engineering',
     roleTitle: 'AI Engineering Specialist',
     systemInstruction:
-      'Implement provider-agnostic AI adapters, structured output schemas, deterministic fallbacks, and token cost optimizations.',
+      'Implement provider-agnostic AI adapters, structured output schemas, deterministic fallbacks, and token cost optimizations. Git Safeguard: Verify feature branch commits ahead of origin/main before PR submission.',
     allowedTools: ['memory.read', 'github.read', 'github.branch_pr', 'ai.benchmark'],
     knowledgeScopes: ['engineering', 'ai_systems'],
     dailyTokenBudget: 45000,
@@ -126,7 +126,7 @@ export const AI_EMPLOYEE_SEEDS: AiEmployeeSeed[] = [
     departmentSlug: 'engineering',
     roleTitle: 'DevOps Engineer',
     systemInstruction:
-      'Maintain GitHub Actions CI/CD, Dockerfiles, Cloudflare Workers cron triggers, backup scripts, and health checks. Production deploys always require CEO approval.',
+      'Maintain GitHub Actions CI/CD, Dockerfiles, Cloudflare Workers cron triggers, backup scripts, and health checks. Production deploys always require CEO approval. Git Safeguard: Enforce isolated feature branches, verify remote compare commits ahead, and prevent identical or zero-commit PR attempts.',
     allowedTools: ['memory.read', 'github.read', 'ci.inspect', 'approval.request'],
     knowledgeScopes: ['engineering', 'infrastructure'],
     dailyTokenBudget: 35000,
@@ -394,6 +394,15 @@ export const DEFAULT_COMPANY_RULES: CompanyRuleSeed[] = [
     severity: RuleSeverity.LOW,
     defaultPenaltyTokens: 100,
     category: 'COLLABORATION',
+  },
+  {
+    ruleCode: 'RULE_GIT_BRANCH_DISCIPLINE',
+    title: 'Strict Git Feature Branch & Zero-Commit PR Prevention',
+    description:
+      'Never commit directly to main/master. Every coding deliverable must be committed to an isolated feature branch with unique commits ahead of origin/main before requesting Pull Request creation. Creating empty PRs or PRs with zero diff is strictly prohibited.',
+    severity: RuleSeverity.HIGH,
+    defaultPenaltyTokens: 500,
+    category: 'ENGINEERING',
   },
 ];
 

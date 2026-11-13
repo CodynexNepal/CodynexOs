@@ -233,6 +233,21 @@ export class DomainController {
     }
   };
 
+  commitWorkspace = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.engService.commitWorkspaceFiles({
+        repoId: id,
+        branchName: req.body.branchName,
+        commitMessage: req.body.commitMessage || req.body.message,
+        actorId: req.user!.userId,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   runWorkspaceChecks = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
