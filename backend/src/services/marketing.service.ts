@@ -339,23 +339,33 @@ Return ONLY a valid JSON object matching this schema:
   }
 }`;
 
-      const aiRes = await this.modelRouter.complete(
+      // Enforce strict 2.2-second latency ceiling so response time is guaranteed under 3 seconds
+      const aiCall = this.modelRouter.complete(
         {
           systemPrompt,
           userPrompt: `Instruction from CEO: ${prompt}`,
         },
         {
           taskType: 'social_content_generation',
-          complexity: 'medium',
+          complexity: 'low',
         },
       );
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error('AI inference timeout exceeded 2200ms limit'));
+        }, 2200);
+        if (typeof timer.unref === 'function') timer.unref();
+      });
+
+      const aiRes = await Promise.race([aiCall, timeoutPromise]);
 
       const jsonStr = extractJsonObjectString(aiRes.content);
       if (jsonStr) {
         aiGenerated = JSON.parse(jsonStr) as GeneratedChannelContent;
       }
     } catch (err) {
-      logger.warn('[MarketingService] AI completion fallback to deterministic cultural engine', {
+      logger.warn('[MarketingService] AI completion fast-fallback to instantaneous cultural engine (<2.5s)', {
         error: (err as Error).message,
       });
     }

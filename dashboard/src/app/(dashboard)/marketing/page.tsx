@@ -110,6 +110,60 @@ interface GeneratedContent {
   };
 }
 
+const INITIAL_TIHAR_CONTENT: GeneratedContent = {
+  tiktok: {
+    hook: "✨ तिहारमा के लगाउने सोच्दै हुनुहुन्छ? Watch this festive glow-up!",
+    scenes: [
+      {
+        scene: 1,
+        visual: "Close-up of lighting traditional brass Diya with glowing marigold backdrop in slow motion.",
+        audio: "Trending Nepali acoustic sitar + modern lo-fi chill beat",
+        caption: "Happy Tihar from Aliza Wears family! 🪔",
+      },
+      {
+        scene: 2,
+        visual: "Smooth transition showing premium festive silk saree & embroidered royal kurta sets.",
+        audio: "Beat drop with rhythmic Nepali folk fusion",
+        caption: "Flat 20% OFF with code \"TIHAR2026\" ✨ Delivery in 24 hrs!",
+      },
+      {
+        scene: 3,
+        visual: "Model laughing with family, wearing Bhai Tika jewelry and stylish ethnic fit.",
+        audio: "Warm vocal sign-off",
+        caption: "Tap the bio link to order before stock runs out! 🛍️",
+      },
+    ],
+    caption: "दीपावलीको झिलिमिलीसँगै तपाईंको स्टाइल पनि चम्कियोस्! 🪔✨ Celebrate Tihar with Aliza Wears' handpicked festive collection. Tap bio link to shop with code TIHAR2026!",
+    audioCue: "Trending Nepali Acoustic Lo-Fi Beat / Tihar Folk Remix",
+    hashtags: ["#HappyTihar", "#Tihar2026", "#DeepawaliNepal", "#AlizaWears", "#FestiveFashionNepal"],
+  },
+  facebook: {
+    headline: "🪔 तिहार तथा दीपावलीको पावन अवसरमा हार्दिक शुभकामना!",
+    postText: "सयपत्रीको सुगन्ध, झिलिमिली बत्तीको उज्यालो, अनि दाजुभाइ-दिदीबहिनीको अगाध प्रेमको पर्व तिहारले तपाईं र तपाईंको परिवारमा सुख, शान्ति र समृद्धि छाओस्। 🪔✨\n\nयो विशेष उत्सवमा तपाईंको स्टाइललाई अझ विशेष बनाउन Aliza Wears ले ल्याएको छ आकर्षक Festive Collection — प्रिमियम सिल्क, रयल कुर्था, अनि आधुनिक नेपाली डिजाइनहरू!\n\n🎁 Exclusive Festive Offer:\n• Use coupon code: \"TIHAR2026\" for 20% Instant Discount\n• Free & Express Delivery across Kathmandu Valley within 24 Hours\n• Cash on Delivery & All Digital Payments (eSewa, Khalti, Fonepay) accepted.",
+    callToAction: "Visit www.alizawears.com or message us directly on WhatsApp to place your order today!",
+    engagementQuestion: "यसपालिको भाइटीकामा तपाईं कुन रङ्गको पहिरन रोज्दै हुनुहुन्छ? कमेन्टमा बताउनुहोला! 👇",
+    suggestedVisual: "High-resolution festive showcase: Golden hour lighting with brass Diyas, silk sarees, and embroidered kurtas.",
+    hashtags: ["#FestiveCollection", "#AlizaWears", "#HappyTihar", "#Tihar2026"],
+  },
+  whatsapp: {
+    broadcastMessage: "*Namaste from Aliza Wears!* 🪔✨\n\nWishing you and your family a luminous, prosperous, and joyful *Tihar & Deepawali*!\n\nAs our valued customer, we have reserved an exclusive festive treat for your celebrations:",
+    bulletPoints: [
+      "🌟 *20% Instant Discount* with code: *TIHAR2026*",
+      "⚡ *Same-Day Delivery* inside Ring Road (Order before 2 PM)",
+      "🎁 *Complimentary Silk Pouch & Diya Set* on all orders above Rs. 3,500",
+      "📲 Easy Payment via *eSewa, Khalti, Fonepay, or Cash on Delivery*",
+    ],
+    ctaLink: "https://alizawears.com/collections/tihar",
+    statusTeaser: "🪔 Celebrate Tihar with timeless elegance! Flat 20% OFF with code TIHAR2026 — Shop now!",
+  },
+  instagram: {
+    caption: "Glow brighter than the diyas this festive season. ✨ Captured in pure silk and festive warmth. Celebrate Tihar with Aliza Wears.\n\nCoupon code: TIHAR2026 for 20% off.\nLink in bio.",
+    visualDirection: "Moody candle-lit flat lay with brass diyas, marigolds, and silk drape.",
+    storySticker: "Interactive Slider: 'Rate this Tihar look 🔥'",
+    hashtags: ["#FestiveElegance", "#AlizaWears", "#DiwaliVibes"],
+  },
+};
+
 export default function MarketingPage() {
   const [selectedBizFilter, setSelectedBizFilter] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"studio" | "accounts" | "campaigns">("studio");
@@ -149,7 +203,7 @@ export default function MarketingPage() {
   const [ceoPrompt, setCeoPrompt] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
+  const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(INITIAL_TIHAR_CONTENT);
   const [previewPlatform, setPreviewPlatform] = useState<"TIKTOK" | "FACEBOOK" | "WHATSAPP">("TIKTOK");
   const [dispatchSuccess, setDispatchSuccess] = useState<{
     dispatches?: Array<{
@@ -620,8 +674,19 @@ export default function MarketingPage() {
                   </div>
                 </div>
 
+                {/* Fast Non-blocking Status Indicator */}
+                {isGenerating && (
+                  <div className="flex items-center justify-between rounded-lg bg-amber-50/90 border border-amber-200 px-3.5 py-2 text-xs font-medium text-amber-900 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 animate-spin text-amber-600" />
+                      <span>Synthesizing culturally vibrant posts (&lt;2.5s fast pipeline)...</span>
+                    </div>
+                    <span className="text-[11px] font-mono text-amber-700 font-bold">Turbo AI</span>
+                  </div>
+                )}
+
                 {/* Previews Content */}
-                {isGenerating ? (
+                {!generatedContent ? (
                   <div className="py-16 text-center">
                     <Sparkles className="mx-auto h-8 w-8 animate-spin text-amber-500" />
                     <p className="mt-3 text-xs font-bold text-ink">
@@ -629,12 +694,6 @@ export default function MarketingPage() {
                     </p>
                     <p className="text-[11px] text-ink-muted">Synthesizing hooks, storyboards, and authentic festive copy</p>
                   </div>
-                ) : !generatedContent ? (
-                  <EmptyState
-                    icon={Sparkles}
-                    title="No content generated yet"
-                    description="Click 'Regenerate AI Content' to produce instant TikTok, Facebook, and WhatsApp copy."
-                  />
                 ) : (
                   <div>
                     {/* TIKTOK PREVIEW */}
