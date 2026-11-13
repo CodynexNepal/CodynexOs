@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   Megaphone,
   Rocket,
+  Scale,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -46,6 +47,7 @@ export const OS_NAVIGATION: NavGroup[] = [
     group: "Organization",
     items: [
       { label: "AI Employees", href: "/employees", icon: Bot },
+      { label: "HR & Agent Contracts", href: "/hr", icon: Scale },
       { label: "Departments", href: "/departments", icon: Building2 },
       { label: "Projects", href: "/projects", icon: FolderKanban },
       { label: "Tasks", href: "/tasks", icon: CheckSquare },
