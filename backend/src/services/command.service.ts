@@ -205,6 +205,33 @@ export class CommandService {
       return tasks;
     }
 
+    if (/tihar|dashain|occasion|wish|wishes|social|tiktok|facebook|whatsapp|post|content|festival|holiday/.test(lower)) {
+      tasks.push({
+        key: 'content_draft',
+        title: 'Creative Content & Festive Copywriting (TikTok, Facebook, WhatsApp)',
+        description: `Draft culturally authentic, high-converting social media posts, TikTok storyboard, Facebook copy, and WhatsApp VIP broadcasts for: ${instruction}`,
+        departmentSlug: 'marketing',
+        employeeSlug: 'content_marketer',
+        taskType: 'content_draft',
+        priority: 85,
+        dependsOnKeys: [],
+        requiresApproval: false,
+      });
+
+      tasks.push({
+        key: 'social_dispatch',
+        title: 'Multi-Channel Social Dispatch to Official Accounts',
+        description: `Validate official accounts (TikTok, Facebook, WhatsApp) and execute coordinated marketing post dispatch for: ${instruction}`,
+        departmentSlug: 'marketing',
+        employeeSlug: 'marketing_director',
+        taskType: 'social_dispatch',
+        priority: 80,
+        dependsOnKeys: ['content_draft'],
+        requiresApproval: true,
+      });
+      return tasks;
+    }
+
     if (/market|competitor|campaign|hostel|lead|outreach|sales|seo/.test(lower)) {
       tasks.push({
         key: 'research',

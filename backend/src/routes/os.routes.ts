@@ -217,6 +217,34 @@ export function createOsRouter(): Router {
     validateDto(CreateCampaignDto),
     domainController.createCampaign,
   );
+  router.get('/marketing/occasions', domainController.getMarketingOccasions);
+  router.post(
+    '/marketing/generate-content',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    domainController.generateMarketingContent,
+  );
+  router.post(
+    '/marketing/publish',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    domainController.publishSocialPosts,
+  );
+  router.post(
+    '/marketing/ceo-instant-post',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    domainController.executeCeoInstantPost,
+  );
+  router.get('/marketing/social-accounts', domainController.listSocialAccounts);
+  router.post(
+    '/marketing/social-accounts',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    domainController.upsertSocialAccount,
+  );
+  router.post(
+    '/marketing/social-accounts/:id/test',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.testSocialAccount,
+  );
 
   router.get('/crm/leads', domainController.listLeads);
   router.post(

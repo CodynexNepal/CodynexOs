@@ -159,6 +159,34 @@ export const codynexApi = {
       businessId?: string;
       emailAccountId?: string;
     }) => api.post("/marketing/campaigns", body),
+    occasions: () => api.get("/marketing/occasions"),
+    generateContent: (body: {
+      occasionKey?: string;
+      businessId?: string;
+      businessName?: string;
+      customPrompt?: string;
+      channels: string[];
+      brandVoice?: string;
+      discountCode?: string;
+      targetAudience?: string;
+    }) => api.post("/marketing/generate-content", body),
+    publishSocial: (body: {
+      campaignId?: string;
+      occasion?: string;
+      channels: string[];
+      content: Record<string, unknown>;
+      businessId?: string;
+    }) => api.post("/marketing/publish", body),
+    ceoInstantPost: (body: {
+      commandText: string;
+      occasionKey?: string;
+      channels?: string[];
+      businessId?: string;
+    }) => api.post("/marketing/ceo-instant-post", body),
+    socialAccounts: (businessId?: string) =>
+      api.get("/marketing/social-accounts", { params: businessId ? { businessId } : undefined }),
+    upsertSocialAccount: (body: Record<string, unknown>) => api.post("/marketing/social-accounts", body),
+    testSocialAccount: (id: string) => api.post(`/marketing/social-accounts/${id}/test`),
   },
   crm: {
     leads: (stage?: string, businessId?: string) =>

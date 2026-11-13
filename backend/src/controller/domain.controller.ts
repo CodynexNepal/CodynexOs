@@ -6,6 +6,7 @@ import { GovernanceRepository } from '../repository/governance.repository';
 import { ModelRouterService } from '../ai/router/model-router.service';
 import { AuditService } from '../services/audit.service';
 import { BusinessEmailService } from '../services/business-email.service';
+import { MarketingService } from '../services/marketing.service';
 import { getRequiredParam } from '../decorators/http.decorator';
 import { STATUS_CODE } from '../constant/statusCode.interface';
 import { MemoryCategory, QaVerdict } from '../constant/enum.constant';
@@ -19,6 +20,7 @@ export class DomainController {
     private readonly modelRouter: ModelRouterService,
     private readonly auditService: AuditService,
     private readonly businessEmailService: BusinessEmailService,
+    private readonly marketingService?: MarketingService,
   ) {}
 
   listMemory = async (req: Request, res: Response, next: NextFunction) => {
@@ -365,18 +367,142 @@ export class DomainController {
   listCampaigns = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : undefined;
-      const data = await this.crmService.listCampaigns(businessId);
+      const data = this.marketingService
+        ? await this.marketingService.listCampaigns(businessId)
+        : await this.crmService.listCampaigns(businessId);
       res.status(STATUS_CODE.OK).json({ success: true, data });
     } catch (err) {
       next(err);
     }
   };
 
-
   createCampaign = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.crmService.createCampaign(req.body, req.user!.userId);
       res.status(STATUS_CODE.CREATED).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getMarketingOccasions = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.OK).json({ success: true, data: [] });
+      }
+      const data = this.marketingService.getOccasions();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  generateMarketingContent = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const data = await this.marketingService.generateContent({
+        occasionKey: req.body.occasionKey,
+        businessId: req.body.businessId,
+        businessName: req.body.businessName,
+        customPrompt: req.body.customPrompt,
+        channels: req.body.channels || ['TIKTOK', 'FACEBOOK', 'WHATSAPP'],
+        brandVoice: req.body.brandVoice,
+        discountCode: req.body.discountCode,
+        targetAudience: req.body.targetAudience,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  publishSocialPosts = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const data = await this.marketingService.publishToSocialChannels({
+        campaignId: req.body.campaignId,
+        occasion: req.body.occasion,
+        channels: req.body.channels || ['TIKTOK', 'FACEBOOK', 'WHATSAPP'],
+        content: req.body.content,
+        businessId: req.body.businessId,
+        actorId: req.user?.userId,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  executeCeoInstantPost = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const data = await this.marketingService.executeCeoCommandPost({
+        commandText: req.body.commandText,
+        occasionKey: req.body.occasionKey,
+        channels: req.body.channels,
+        businessId: req.body.businessId,
+        actorId: req.user?.userId,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  listSocialAccounts = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.OK).json({ success: true, data: [] });
+      }
+      const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : undefined;
+      const data = await this.marketingService.listSocialAccounts(businessId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  upsertSocialAccount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const data = await this.marketingService.saveSocialAccount(req.body);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  testSocialAccount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const id = getRequiredParam(req, 'id');
+      const data = await this.marketingService.testAccountConnection(id);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
     } catch (err) {
       next(err);
     }
