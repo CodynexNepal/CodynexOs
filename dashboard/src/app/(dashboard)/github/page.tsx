@@ -11,6 +11,7 @@ import {
   Folder,
   FolderGit2,
   GitBranch,
+  GitCommit,
   GitPullRequest,
   Key,
   Play,
@@ -101,6 +102,10 @@ export default function GithubPage() {
   const [newFileOpen, setNewFileOpen] = useState(false);
   const [newFilePath, setNewFilePath] = useState("");
   const [newFileContent, setNewFileContent] = useState("");
+  const [newFileCommitMsg, setNewFileCommitMsg] = useState("");
+  const [commitModalOpen, setCommitModalOpen] = useState(false);
+  const [workspaceCommitMsg, setWorkspaceCommitMsg] = useState("");
+  const [fileCommitMsg, setFileCommitMsg] = useState("");
   const [branchName, setBranchName] = useState(() => `codynex/feature-${Date.now().toString(36)}`);
   const [prTitle, setPrTitle] = useState("");
   const [checksResult, setChecksResult] = useState<{
@@ -262,7 +267,7 @@ export default function GithubPage() {
     }
   };
 
-  const handleSaveFile = async () => {
+  const handleSaveFile = async (commit = false) => {
     if (!activeRepo || !selectedFile) return;
     setBusyAction("save");
     setActionErr(null);
@@ -271,7 +276,53 @@ export default function GithubPage() {
         branchName,
         files: [{ path: selectedFile.path, content: editContent }],
       });
-      setActionMsg(`Saved '${selectedFile.path}' on branch '${branchName}'.`);
+      if (commit) {
+        const msg = fileCommitMsg.trim() || `feat: update ${selectedFile.path}`;
+        const res = await codynexApi.github.workspaceCommit(activeRepo.id, {
+          branchName,
+          commitMessage: msg,
+        });
+        const out = unwrap<{ commitSha?: string }>(res.data);
+        setActionMsg(
+          `Saved & committed '${selectedFile.path}' on branch '${branchName}' (${
+            out.commitSha ? out.commitSha.slice(0, 7) : "committed"
+          }).`
+        );
+        setFileCommitMsg("");
+      } else {
+        setActionMsg(`Saved '${selectedFile.path}' on branch '${branchName}'.`);
+      }
+      await loadWorkspace(activeRepo, currentPath);
+    } catch (err) {
+      setActionErr(toApiError(err).message);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleWorkspaceCommit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!activeRepo) return;
+    setBusyAction("commit");
+    setActionErr(null);
+    try {
+      const msg = workspaceCommitMsg.trim() || `chore: update workspace files on ${branchName}`;
+      const res = await codynexApi.github.workspaceCommit(activeRepo.id, {
+        branchName,
+        commitMessage: msg,
+      });
+      const out = unwrap<{ committed: boolean; commitSha?: string }>(res.data);
+      if (out.committed) {
+        setActionMsg(
+          `Staged and committed changes on '${branchName}' (${
+            out.commitSha ? out.commitSha.slice(0, 7) : "new commit"
+          }).`
+        );
+      } else {
+        setActionMsg(`No changes to commit on '${branchName}' (working tree clean).`);
+      }
+      setCommitModalOpen(false);
+      setWorkspaceCommitMsg("");
       await loadWorkspace(activeRepo, currentPath);
     } catch (err) {
       setActionErr(toApiError(err).message);
@@ -290,10 +341,21 @@ export default function GithubPage() {
         branchName,
         files: [{ path: newFilePath.trim(), content: newFileContent }],
       });
+      const commitMsg = newFileCommitMsg.trim() || `feat: add ${newFilePath.trim()}`;
+      const res = await codynexApi.github.workspaceCommit(activeRepo.id, {
+        branchName,
+        commitMessage: commitMsg,
+      });
+      const out = unwrap<{ commitSha?: string }>(res.data);
       setNewFileOpen(false);
-      setActionMsg(`Created '${newFilePath.trim()}' on branch '${branchName}'.`);
+      setActionMsg(
+        `Created & committed '${newFilePath.trim()}' on branch '${branchName}' (${
+          out.commitSha ? out.commitSha.slice(0, 7) : "committed"
+        }).`
+      );
       setNewFilePath("");
       setNewFileContent("");
+      setNewFileCommitMsg("");
       await loadWorkspace(activeRepo, currentPath);
     } catch (err) {
       setActionErr(toApiError(err).message);
@@ -602,6 +664,15 @@ export default function GithubPage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={() => setCommitModalOpen(true)}
+                        loading={busyAction === "commit"}
+                      >
+                        <GitCommit className="h-3.5 w-3.5" />
+                        Commit Changes
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={handleRunChecks}
                         loading={busyAction === "checks"}
                       >
@@ -698,19 +769,39 @@ export default function GithubPage() {
                 <div className="space-y-4 p-4 lg:col-span-2">
                   {selectedFile ? (
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-mono text-xs font-bold text-ink">
                           {selectedFile.path}
                         </span>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={handleSaveFile}
-                          loading={busyAction === "save"}
-                        >
-                          <Save className="h-3.5 w-3.5" />
-                          Save File to Branch
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleSaveFile(false)}
+                            loading={busyAction === "save"}
+                          >
+                            <Save className="h-3.5 w-3.5" />
+                            Save File
+                          </Button>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => handleSaveFile(true)}
+                            loading={busyAction === "save"}
+                          >
+                            <GitCommit className="h-3.5 w-3.5" />
+                            Save &amp; Commit
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder={`Commit message (e.g. feat: update ${selectedFile.path})`}
+                          value={fileCommitMsg}
+                          onChange={(e) => setFileCommitMsg(e.target.value)}
+                          className="h-8 flex-1 rounded border border-surface-border bg-surface px-2.5 text-xs text-ink placeholder:text-ink-muted/60"
+                        />
                       </div>
                       <textarea
                         value={editContent}
@@ -823,26 +914,61 @@ export default function GithubPage() {
         </form>
       </Modal>
 
-      <Modal open={newFileOpen} onClose={() => setNewFileOpen(false)} title="Create New Workspace File">
+      <Modal open={newFileOpen} onClose={() => setNewFileOpen(false)} title="Create &amp; Add File to Workspace">
         <form onSubmit={handleCreateNewFile} className="space-y-4">
           <Input
             label="Relative File Path"
-            placeholder="src/cookie-policy.tsx"
+            placeholder="src/routes/product.routes.ts"
             value={newFilePath}
             onChange={(e) => setNewFilePath(e.target.value)}
             required
           />
           <Textarea
             label="File Content"
-            rows={8}
+            rows={10}
             value={newFileContent}
             onChange={(e) => setNewFileContent(e.target.value)}
             required
           />
-          <Button type="submit" variant="dark" loading={busyAction === "new-file"}>
-            <Save className="h-4 w-4" />
-            Create on Branch ({branchName})
-          </Button>
+          <Input
+            label="Commit Message (Optional)"
+            placeholder={`feat: add ${newFilePath.trim() || "file"}`}
+            value={newFileCommitMsg}
+            onChange={(e) => setNewFileCommitMsg(e.target.value)}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setNewFileOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="dark" loading={busyAction === "new-file"}>
+              <GitCommit className="h-4 w-4" />
+              Add File &amp; Commit to {branchName}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={commitModalOpen} onClose={() => setCommitModalOpen(false)} title={`Commit Changes on ${branchName}`}>
+        <form onSubmit={handleWorkspaceCommit} className="space-y-4">
+          <p className="text-xs text-ink-muted leading-relaxed">
+            Stage all modified and newly added files in <strong>{activeRepo?.owner}/{activeRepo?.name}</strong> and create a commit on branch <code>{branchName}</code>.
+          </p>
+          <Input
+            label="Commit Message"
+            placeholder="feat: implement product routes and auth middleware"
+            value={workspaceCommitMsg}
+            onChange={(e) => setWorkspaceCommitMsg(e.target.value)}
+            required
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setCommitModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="dark" loading={busyAction === "commit"}>
+              <GitCommit className="h-4 w-4" />
+              Stage &amp; Commit
+            </Button>
+          </div>
         </form>
       </Modal>
     </DashboardShell>

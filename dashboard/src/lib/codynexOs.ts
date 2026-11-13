@@ -118,6 +118,10 @@ export const codynexApi = {
       id: string,
       body: { branchName: string; files: Array<{ path: string; content: string }> }
     ) => api.post(`/github/repos/${id}/workspace/files`, body),
+    workspaceCommit: (
+      id: string,
+      body: { branchName: string; commitMessage?: string }
+    ) => api.post(`/github/repos/${id}/workspace/commit`, body),
     workspaceRunChecks: (id: string) => api.post(`/github/repos/${id}/workspace/checks`, {}),
     workspacePushPr: (
       id: string,

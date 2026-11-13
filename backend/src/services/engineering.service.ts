@@ -725,6 +725,56 @@ export class EngineeringService {
     return { branchName, written };
   }
 
+  async commitWorkspaceFiles(params: {
+    repoId: string;
+    branchName: string;
+    commitMessage: string;
+    actorId: string;
+  }) {
+    const repo = await this.engRepo.findRepoById(params.repoId);
+    if (!repo) throw ApiError.notFound('Repository not found.');
+    if (!repo.isWriteAuthorized) throw ApiError.forbidden('Repository is read-only.');
+
+    const token = await resolveRuntimeSecret('github_token');
+    await this.workspaceService.ensureClonedOrPulled({
+      owner: repo.owner,
+      name: repo.name,
+      defaultBranch: repo.defaultBranch,
+      token: token || undefined,
+    });
+
+    await this.workspaceService.checkoutBranch(
+      repo.owner,
+      repo.name,
+      params.branchName,
+      repo.defaultBranch,
+    );
+
+    const result = await this.workspaceService.stageAndCommit(
+      repo.owner,
+      repo.name,
+      params.branchName,
+      params.commitMessage || `chore: commit workspace changes on ${params.branchName}`,
+    );
+
+    if (result.committed) {
+      await this.auditService.log({
+        actorType: 'USER',
+        actorId: params.actorId,
+        action: 'WORKSPACE_COMMITTED',
+        resourceType: 'github_repository',
+        resourceId: repo.id,
+        metadata: { branchName: params.branchName, commitSha: result.commitSha },
+      });
+    }
+
+    return {
+      committed: result.committed,
+      commitSha: result.commitSha,
+      branchName: params.branchName,
+    };
+  }
+
   async runWorkspaceChecks(repoId: string, taskId: string | undefined, actorId: string) {
     const repo = await this.engRepo.findRepoById(repoId);
     if (!repo) throw ApiError.notFound('Repository not found.');
