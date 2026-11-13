@@ -49,6 +49,18 @@ let refreshPromise: Promise<string | null> | null = null;
 
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
+  _transportRetry?: boolean;
+}
+
+const RETRYABLE_TRANSPORT_CODES = new Set([
+  "ECONNABORTED",
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "ERR_NETWORK",
+]);
+
+function waitForRetry(delayMs: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
 }
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -84,6 +96,21 @@ api.interceptors.response.use(
       reqUrl.includes("/auth/login") ||
       reqUrl.includes("/auth/refresh") ||
       reqUrl.includes("/auth/logout");
+
+    // Dashboard reads are safe to retry. This absorbs a transient database
+    // pool wake-up or local dev-proxy reconnect without retrying mutations.
+    if (
+      typeof window !== "undefined" &&
+      originalRequest &&
+      originalRequest.method?.toLowerCase() === "get" &&
+      !originalRequest._transportRetry &&
+      !originalRequest.signal?.aborted &&
+      RETRYABLE_TRANSPORT_CODES.has(axiosErr?.code ?? "")
+    ) {
+      originalRequest._transportRetry = true;
+      await waitForRetry(750);
+      return api(originalRequest);
+    }
 
     if (
       parsed.status === 401 &&

@@ -28,9 +28,14 @@ export const psqlDbConfig: DataSourceOptions = {
   migrationsTableName: 'typeorm_migrations',
   extra: {
     max: parseInt(process.env.DB_POOL_MAX || '8', 10),
-    min: parseInt(process.env.DB_POOL_MIN || '0', 10),
-    connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || '15000', 10),
-    idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || '30000', 10),
+    // Keep one connection warm.  A zero-sized pool combined with a 30-second
+    // idle timeout repeatedly cold-started the hosted Postgres connection,
+    // making dashboard requests wait long enough for the client to time out.
+    min: parseInt(process.env.DB_POOL_MIN || '1', 10),
+    // Fail a bad upstream quickly so the API can return an error instead of
+    // leaving the browser request open until its Axios timeout expires.
+    connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || '10000', 10),
+    idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || '300000', 10),
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000,
     ssl:
