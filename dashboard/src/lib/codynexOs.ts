@@ -298,6 +298,45 @@ export const codynexApi = {
       allowPaidProviders: boolean;
     }) => api.put("/ai-usage/budget", body),
   },
+  ai: {
+    listProviders: () => api.get("/ai/providers"),
+    saveProvider: (body: {
+      provider: string;
+      apiKey?: string;
+      accountId?: string;
+      baseUrl?: string;
+      model?: string;
+    }) => api.post("/ai/providers", body),
+    deleteProvider: (id: string) => api.delete(`/ai/providers/${id}`),
+    testProvider: (
+      id: string,
+      body?: { apiKey?: string; accountId?: string; baseUrl?: string; model?: string }
+    ) => api.post(`/ai/providers/${id}/test`, body || {}),
+    getProviderModels: (id: string) => api.get(`/ai/providers/${id}/models`),
+    getAllModels: () => api.get("/ai/models"),
+    getQuotas: () => api.get("/ai/quotas"),
+    getSettings: () => api.get("/ai/settings"),
+    updateSettings: (body: {
+      freeOnlyMode?: boolean;
+      autoFallback?: boolean;
+      preferredProviderOrder?: string[];
+      maxConcurrentRequests?: number;
+      maxRetries?: number;
+      timeoutMs?: number;
+      dailyTokenBudget?: number;
+    }) => api.patch("/ai/settings", body),
+    getAgentPreferences: () => api.get("/ai/agents/preferences"),
+    updateAgentPreference: (
+      agentRole: string,
+      body: {
+        preferredProvider?: string;
+        fallbackProvider?: string;
+        preferredModel?: string;
+        temperature?: number;
+        maxTokens?: number;
+      }
+    ) => api.patch(`/ai/agents/${encodeURIComponent(agentRole)}/preferences`, body),
+  },
   notifications: {
     list: () => api.get("/notifications"),
     markRead: (id: string) => api.patch(`/notifications/${id}/read`),
