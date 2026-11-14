@@ -16,6 +16,10 @@ import { STATUS_CODE } from '../constant/statusCode.interface';
 import { ApprovalStatus, TaskStatus } from '../constant/enum.constant';
 import { ApiError } from '../utils/api-error.util';
 import { socketServer } from '../socket/socket.server';
+import { browserService } from '../services/browser.service';
+import { terminalService } from '../services/terminal.service';
+import { agentExecutionService } from '../services/agent-execution.service';
+import { verificationGateService } from '../services/verification-gate.service';
 
 export class OsController {
   constructor(
@@ -450,6 +454,152 @@ export class OsController {
     try {
       const result = await this.orchestratorService.runTick(3);
       res.status(STATUS_CODE.OK).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getBrowserState = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const state = await browserService.getSessionState(sessionId);
+      res.status(STATUS_CODE.OK).json({ success: true, data: state });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  browserNavigate = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const url = req.body.url;
+      const state = await browserService.navigate(sessionId, url);
+      res.status(STATUS_CODE.OK).json({ success: true, data: state });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  browserClick = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const selector = req.body.selector;
+      const state = await browserService.click(sessionId, selector);
+      res.status(STATUS_CODE.OK).json({ success: true, data: state });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  browserType = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const { selector, text } = req.body;
+      const state = await browserService.type(sessionId, selector, text);
+      res.status(STATUS_CODE.OK).json({ success: true, data: state });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  browserTakeover = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const enabled = Boolean(req.body.enabled);
+      const state = await browserService.setHumanTakeover(sessionId, enabled);
+      res.status(STATUS_CODE.OK).json({ success: true, data: state });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  terminalExecute = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const { command, cwd } = req.body;
+      const record = await terminalService.executeCommand({
+        sessionId,
+        command,
+        cwd,
+        actorId: req.user?.userId,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data: record });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  terminalCancel = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const executionId = getRequiredParam(req, 'executionId');
+      const ok = terminalService.cancelCommand(executionId);
+      res.status(STATUS_CODE.OK).json({ success: true, data: { cancelled: ok } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  agentPause = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const ok = agentExecutionService.pauseSession(sessionId);
+      res.status(STATUS_CODE.OK).json({ success: true, data: { paused: ok } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  agentResume = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const ok = agentExecutionService.resumeSession(sessionId);
+      res.status(STATUS_CODE.OK).json({ success: true, data: { resumed: ok } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  agentCancel = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const ok = agentExecutionService.cancelSession(sessionId);
+      res.status(STATUS_CODE.OK).json({ success: true, data: { cancelled: ok } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  agentRunSession = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { sessionId, taskId, instruction, roleTitle, owner, repoName, maxSteps } = req.body;
+      const cleanSessionId = sessionId || `session_${Date.now()}`;
+      void agentExecutionService.runAgentLoop({
+        sessionId: cleanSessionId,
+        taskId: taskId || cleanSessionId,
+        instruction: instruction || 'Review workspace and check application health.',
+        roleTitle: roleTitle || 'Autonomous AI Engineer',
+        owner,
+        repoName,
+        maxSteps,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data: { sessionId: cleanSessionId, status: 'STARTED' } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  evaluateReleaseGates = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { owner = 'organization', name = 'workspace', taskId, previewUrl, expectedDeliverables } = req.body;
+      const certificate = await verificationGateService.evaluateReleaseGates({
+        owner,
+        name,
+        taskId,
+        reviewerEmployeeId: req.user?.userId,
+        previewUrl,
+        expectedDeliverables,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data: certificate });
     } catch (err) {
       next(err);
     }

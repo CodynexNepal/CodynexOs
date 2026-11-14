@@ -428,5 +428,23 @@ export function createOsRouter(): Router {
     hrController.grantTokens,
   );
 
+  // --- Autonomous AI Platform: Browser, Terminal & Agent Execution ---
+  router.get('/browser/sessions/:sessionId', osController.getBrowserState);
+  router.post('/browser/sessions/:sessionId/navigate', osController.browserNavigate);
+  router.post('/browser/sessions/:sessionId/click', osController.browserClick);
+  router.post('/browser/sessions/:sessionId/type', osController.browserType);
+  router.post('/browser/sessions/:sessionId/takeover', osController.browserTakeover);
+
+  router.post('/terminal/sessions/:sessionId/execute', osController.terminalExecute);
+  router.post('/terminal/executions/:executionId/cancel', osController.terminalCancel);
+
+  router.post('/agent/sessions/:sessionId/pause', osController.agentPause);
+  router.post('/agent/sessions/:sessionId/resume', osController.agentResume);
+  router.post('/agent/sessions/:sessionId/cancel', osController.agentCancel);
+  router.post('/agent/sessions/run', osController.agentRunSession);
+
+  // --- Release Quality Gates & Delivery Scorecard ---
+  router.post('/qa/release-gates/run', osController.evaluateReleaseGates);
+
   return router;
 }

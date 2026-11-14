@@ -28,12 +28,68 @@ import { dotEnvConfig } from '../../configs/envConfig';
 import { hashPassword } from '../../utils/password.util';
 import { logger } from '../../utils/logger.util';
 
+export async function ensureDepartmentsAndEmployees(): Promise<void> {
+  const deptRepo = AppDataSource.getRepository(DepartmentEntity);
+  const empRepo = AppDataSource.getRepository(AiEmployeeEntity);
+
+  const existingDepts = await deptRepo.find();
+  const deptMap = new Map<string, DepartmentEntity>(existingDepts.map((d) => [d.slug, d]));
+  const missingDepts: DepartmentEntity[] = [];
+  for (const d of DEPARTMENT_SEEDS) {
+    if (!deptMap.has(d.slug)) {
+      missingDepts.push(
+        deptRepo.create({
+          slug: d.slug,
+          name: d.name,
+          description: d.description,
+          dailyTokenBudget: d.dailyTokenBudget,
+          isActive: true,
+        }),
+      );
+    }
+  }
+  if (missingDepts.length > 0) {
+    const saved = await deptRepo.save(missingDepts);
+    saved.forEach((d) => deptMap.set(d.slug, d));
+  }
+
+  const existingEmps = await empRepo.find();
+  const empMap = new Map<string, AiEmployeeEntity>(existingEmps.map((e) => [e.slug, e]));
+  const missingEmps: AiEmployeeEntity[] = [];
+  for (const e of AI_EMPLOYEE_SEEDS) {
+    const dept = deptMap.get(e.departmentSlug);
+    if (!dept || empMap.has(e.slug)) continue;
+    missingEmps.push(
+      empRepo.create({
+        departmentId: dept.id,
+        slug: e.slug,
+        roleTitle: e.roleTitle,
+        systemInstruction: e.systemInstruction,
+        allowedTools: e.allowedTools,
+        knowledgeScopes: e.knowledgeScopes,
+        preferredProvider: 'gemini',
+        preferredModel: dotEnvConfig.GEMINI_MODEL,
+        fallbackProvider: 'groq',
+        fallbackModel: dotEnvConfig.GROQ_MODEL,
+        dailyTokenBudget: e.dailyTokenBudget,
+        executionBudgetMs: e.executionBudgetMs,
+        isActive: true,
+      }),
+    );
+  }
+  if (missingEmps.length > 0) {
+    const saved = await empRepo.save(missingEmps);
+    saved.forEach((e) => empMap.set(e.slug, e));
+  }
+}
+
 export async function runInitialSeed(): Promise<void> {
   const settingRepo = AppDataSource.getRepository(SystemSettingEntity);
 
-  // Fast-path: if initial seeding has already been completed, return immediately (sub-30ms)
+  // Fast-path: if initial seeding has already been completed, sync any new departments/employees and return
   const seedFlag = await settingRepo.findOne({ where: { key: 'initial_seed_completed' } });
   if (seedFlag) {
+    await ensureDepartmentsAndEmployees();
     return;
   }
 

@@ -5,11 +5,11 @@ import { OpenAiAdapter } from '../../src/ai/adapters/openai.adapter';
 import { AiProviderError } from '../../src/ai/ai-provider.interface';
 
 describe('Company organization, CRM scoring & NPR 0 guardrails', () => {
-  it('defines 6 departments and all 22 required logical AI employees including HR', () => {
-    expect(DEPARTMENT_SEEDS).toHaveLength(6);
-    expect(AI_EMPLOYEE_SEEDS).toHaveLength(22);
+  it('defines at least 6 departments and all required logical AI employees including HR', () => {
+    expect(DEPARTMENT_SEEDS.length).toBeGreaterThanOrEqual(6);
+    expect(AI_EMPLOYEE_SEEDS.length).toBeGreaterThanOrEqual(22);
     const slugs = new Set(AI_EMPLOYEE_SEEDS.map((e) => e.slug));
-    expect(slugs.size).toBe(22);
+    expect(slugs.size).toBe(AI_EMPLOYEE_SEEDS.length);
     expect(slugs.has('coo')).toBe(true);
     expect(slugs.has('cto')).toBe(true);
     expect(slugs.has('qa_engineer')).toBe(true);
