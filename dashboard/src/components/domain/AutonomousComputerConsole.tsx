@@ -3,12 +3,16 @@
 import { useEffect, useState } from "react";
 import {
   Activity,
+  Brain,
   Check,
+  Clock,
   Code2,
   Copy,
+  CornerDownLeft,
   Cpu,
   FileCode2,
   Globe,
+  MessageSquare,
   Pause,
   Play,
   Send,
@@ -16,6 +20,7 @@ import {
   Sparkles,
   Square,
   Terminal as TerminalIcon,
+  Wrench,
 } from "lucide-react";
 import { LiveBrowserViewport } from "@/components/domain/LiveBrowserViewport";
 import { LiveInteractiveTerminal } from "@/components/domain/LiveInteractiveTerminal";
@@ -157,6 +162,284 @@ function StructuredToolOutput({ output }: { output: unknown }) {
   );
 }
 
+function getToolBadge(toolName?: string) {
+  const name = toolName || "unknown";
+  if (name.includes("browser")) {
+    return {
+      label: `tool: ${name}`,
+      icon: Globe,
+      className: "bg-sky-500/20 text-sky-300 border-sky-400/40",
+      toneColor: "#38bdf8",
+    };
+  }
+  if (name.includes("terminal") || name.includes("command") || name.includes("shell") || name.includes("powershell")) {
+    return {
+      label: `tool: ${name}`,
+      icon: TerminalIcon,
+      className: "bg-emerald-500/20 text-emerald-300 border-emerald-400/40",
+      toneColor: "#34d399",
+    };
+  }
+  if (name.includes("file") || name.includes("dir") || name.includes("code")) {
+    return {
+      label: `tool: ${name}`,
+      icon: FileCode2,
+      className: "bg-purple-500/20 text-purple-300 border-purple-400/40",
+      toneColor: "#c084fc",
+    };
+  }
+  if (name.includes("complete") || name.includes("done")) {
+    return {
+      label: `tool: ${name}`,
+      icon: Check,
+      className: "bg-amber-500/20 text-amber-300 border-amber-400/40",
+      toneColor: "#fbbf24",
+    };
+  }
+  return {
+    label: `tool: ${name}`,
+    icon: Wrench,
+    className: "bg-indigo-500/20 text-indigo-300 border-indigo-400/40",
+    toneColor: "#818cf8",
+  };
+}
+
+function formatStepTime(timestamp?: string) {
+  if (!timestamp) return new Date().toLocaleTimeString();
+  if (timestamp.includes("T")) {
+    return timestamp.slice(11, 19);
+  }
+  return timestamp;
+}
+
+function GeminiLiveActivityIndicator({
+  log,
+  currentStep,
+  maxSteps,
+  agentStatus,
+}: {
+  log?: AgentStepLog;
+  currentStep: number;
+  maxSteps: number;
+  agentStatus: string;
+}) {
+  const isExecuting = agentStatus === "RUNNING" || agentStatus === "PLANNING";
+  const toolInfo = getToolBadge(log?.tool);
+  const ToolIcon = toolInfo.icon;
+  const timeStr = formatStepTime(log?.timestamp);
+  const stepNum = log?.step || currentStep || 1;
+
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-purple-500/40 bg-[#0d1117] p-4 shadow-2xl transition-all duration-300 ring-1 ring-purple-500/20">
+      {/* Top Gemini Shimmer Progress Bar */}
+      <div className="absolute top-0 left-0 right-0 h-1 bg-[#161b22] overflow-hidden">
+        <div
+          className={cn(
+            "h-full transition-all duration-500",
+            isExecuting
+              ? "bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 animate-pulse w-full"
+              : "bg-gradient-to-r from-emerald-500 via-teal-400 to-[#9FE870] w-full"
+          )}
+        />
+      </div>
+
+      {/* Main Header / Status Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#30363d]/80 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600/30 via-purple-600/30 to-pink-600/30 border border-purple-400/40 text-purple-300 shadow-md">
+            <Sparkles className={cn("h-4 w-4 text-purple-300", isExecuting && "animate-spin")} />
+            {isExecuting && (
+              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-pink-500"></span>
+              </span>
+            )}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-300 to-pink-400">
+                Gemini Autonomous Live Activity
+              </span>
+              <span
+                className={cn(
+                  "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-mono font-bold uppercase border",
+                  isExecuting
+                    ? "bg-purple-500/20 text-purple-300 border-purple-400/40 animate-pulse"
+                    : agentStatus === "PAUSED"
+                    ? "bg-amber-500/20 text-amber-300 border-amber-400/40"
+                    : "bg-emerald-500/20 text-emerald-300 border-emerald-400/40"
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full",
+                    isExecuting ? "bg-purple-400 animate-ping" : "bg-emerald-400"
+                  )}
+                />
+                {isExecuting ? "Active Thinking & Executing" : agentStatus}
+              </span>
+            </div>
+            <p className="text-[11px] text-[#8b949e]">
+              Continuous reasoning stream · Devin Engine 2.0
+            </p>
+          </div>
+        </div>
+
+        {/* Step Counter Badge */}
+        <div className="flex items-center gap-2">
+          <span className="rounded-md border border-[#30363d] bg-[#161b22] px-2.5 py-1 text-xs font-mono font-bold text-[#c9d1d9]">
+            Step <span className="text-white font-extrabold">{stepNum}</span> / {maxSteps}
+          </span>
+        </div>
+      </div>
+
+      {/* Colorful Activity Shower Line */}
+      <div className="mt-3.5 flex flex-wrap items-center gap-2.5 text-xs font-mono">
+        {/* Step Badge */}
+        <span className="flex items-center gap-1.5 rounded-md border border-blue-400/40 bg-gradient-to-r from-blue-500/20 to-indigo-500/20 px-2.5 py-1 font-bold text-blue-300 shadow-sm">
+          <span>Step {stepNum}</span>
+        </span>
+
+        {/* Tool Badge */}
+        <span
+          className={cn(
+            "flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-bold shadow-sm transition-colors",
+            toolInfo.className
+          )}
+        >
+          <ToolIcon className="h-3.5 w-3.5" />
+          <span>{toolInfo.label}</span>
+        </span>
+
+        {/* Timestamp */}
+        <span className="flex items-center gap-1.5 rounded-md border border-[#30363d] bg-[#161b22] px-2 py-1 text-[11px] text-[#8b949e]">
+          <Clock className="h-3 w-3 text-[#58a6ff]" />
+          <span>{timeStr}</span>
+        </span>
+
+        {/* Status Pill */}
+        {log && (
+          <span
+            className={cn(
+              "ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase border",
+              log.status === "EXECUTING"
+                ? "border-amber-400/40 bg-amber-500/10 text-amber-300 animate-pulse"
+                : log.status === "FAILED"
+                ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
+                : "border-emerald-400/40 bg-emerald-500/10 text-emerald-300"
+            )}
+          >
+            {log.status === "EXECUTING" && <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />}
+            {log.status === "SUCCESS" && <Check className="h-3 w-3" />}
+            {log.status}
+          </span>
+        )}
+      </div>
+
+      {/* Gemini Thought Box */}
+      <div className="mt-3 rounded-lg border-l-4 border-l-purple-500 border border-[#30363d] bg-[#010409]/90 p-3.5 shadow-inner space-y-1.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Brain className="h-3.5 w-3.5 text-purple-400" />
+            <span className="text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-sky-300">
+              Thought:
+            </span>
+          </div>
+          {isExecuting && (
+            <span className="flex items-center gap-1 text-[10px] text-purple-400 font-mono">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-purple-400 animate-ping" />
+              Streaming tokens
+            </span>
+          )}
+        </div>
+        <p className="text-xs font-sans text-[#e6edf3] leading-relaxed font-normal whitespace-pre-wrap">
+          {log?.thought || "Analyzing prompt instruction, evaluating requirements, and planning next step..."}
+        </p>
+
+        {/* Output snippet preview if available */}
+        {log?.output !== undefined && log?.output !== null && (
+          <div className="mt-2.5 border-t border-[#21262d] pt-2">
+            <StructuredToolOutput output={log.output} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AgentStepCard({ log }: { log: AgentStepLog }) {
+  const toolInfo = getToolBadge(log.tool);
+  const ToolIcon = toolInfo.icon;
+  const timeStr = formatStepTime(log.timestamp);
+
+  return (
+    <div className="rounded-xl border border-[#30363d] bg-[#161b22] p-3.5 space-y-2.5 transition-all hover:border-[#58a6ff]/40 shadow-sm">
+      {/* Top Activity Shower Bar: Step 1 | tool: browser_navigate | 18:53:24 */}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Step Pill */}
+          <span className="rounded-md border border-blue-400/40 bg-blue-500/10 px-2 py-0.5 font-mono text-[11px] font-bold text-blue-300">
+            Step {log.step}
+          </span>
+
+          {/* Tool Badge */}
+          <span
+            className={cn(
+              "flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[11px] font-bold",
+              toolInfo.className
+            )}
+          >
+            <ToolIcon className="h-3 w-3" />
+            <span>{toolInfo.label}</span>
+          </span>
+
+          {/* Timestamp */}
+          <span className="flex items-center gap-1 text-[11px] font-mono text-[#8b949e]">
+            <Clock className="h-3 w-3 text-[#58a6ff]" />
+            <span>{timeStr}</span>
+          </span>
+        </div>
+
+        {/* Status */}
+        <span
+          className={cn(
+            "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-mono font-bold uppercase border",
+            log.status === "EXECUTING"
+              ? "border-amber-400/40 bg-amber-500/10 text-amber-300 animate-pulse"
+              : log.status === "FAILED"
+              ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
+              : "border-emerald-400/40 bg-emerald-500/10 text-emerald-300"
+          )}
+        >
+          {log.status === "EXECUTING" && <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />}
+          {log.status === "SUCCESS" && <Check className="h-3 w-3" />}
+          {log.status}
+        </span>
+      </div>
+
+      {/* Thought Box */}
+      {log.thought && (
+        <div className="rounded-lg border-l-2 border-l-purple-400 border border-[#30363d]/60 bg-[#0d1117] p-2.5 text-xs space-y-1">
+          <div className="flex items-center gap-1 text-[11px] font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-sky-300">
+            <Brain className="h-3 w-3 text-purple-400" />
+            <span>Thought:</span>
+          </div>
+          <p className="font-sans text-xs text-[#c9d1d9] leading-relaxed whitespace-pre-wrap">
+            {log.thought}
+          </p>
+        </div>
+      )}
+
+      {/* Result Output */}
+      {log.output !== undefined && log.output !== null && (
+        <div className="mt-1">
+          <StructuredToolOutput output={log.output} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface RepoOption {
   id: string;
   owner: string;
@@ -180,6 +463,8 @@ export function AutonomousComputerConsole({
   const [stepLogs, setStepLogs] = useState<AgentStepLog[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [finalReport, setFinalReport] = useState<string | null>(null);
+  const [replyInput, setReplyInput] = useState("");
+  const [isReplying, setIsReplying] = useState(false);
 
   // Connected Repositories
   const [repos, setRepos] = useState<RepoOption[]>([]);
@@ -267,8 +552,6 @@ export function AutonomousComputerConsole({
         sessionId,
         instruction: cleanPrompt,
         roleTitle: "Autonomous Software & Computer Engineer",
-        owner: selectedRepo?.owner || "CodynexNepal",
-        repoName: selectedRepo?.name || "workspace",
         maxSteps,
       });
     } catch {
@@ -302,6 +585,22 @@ export function AutonomousComputerConsole({
       setAgentStatus("CANCELLED");
     } catch {
       // ignore
+    }
+  };
+
+  const handleSendReply = async () => {
+    const cleanMsg = replyInput.trim();
+    if (!cleanMsg || isReplying) return;
+
+    setIsReplying(true);
+    setAgentStatus("PLANNING");
+    try {
+      await codynexApi.autonomousAgent.reply(sessionId, cleanMsg, 15);
+      setReplyInput("");
+    } catch {
+      setAgentStatus("FAILED");
+    } finally {
+      setIsReplying(false);
     }
   };
 
@@ -519,20 +818,9 @@ export function AutonomousComputerConsole({
               <Sparkles className="h-4 w-4 text-[#9FE870]" />
               Assign Task to Autonomous Computer Agent
             </span>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-[#8b949e]">Target Repository:</span>
-              <select
-                value={selectedRepoId}
-                onChange={(e) => setSelectedRepoId(e.target.value)}
-                className="rounded border border-[#30363d] bg-[#0d1117] px-2 py-1 text-xs text-white font-mono focus:border-[#58a6ff] focus:outline-none"
-              >
-                {repos.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.owner}/{r.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <span className="text-[11px] text-[#8b949e] font-mono">
+              Direct Natural Language Prompting
+            </span>
           </div>
 
           <div className="relative">
@@ -569,6 +857,21 @@ export function AutonomousComputerConsole({
           </div>
         </form>
 
+        {/* Gemini-Style Colorful Live Activity Shower */}
+        {(agentStatus === "RUNNING" ||
+          agentStatus === "PLANNING" ||
+          agentStatus === "PAUSED" ||
+          stepLogs.length > 0) && (
+          <div className="mt-4">
+            <GeminiLiveActivityIndicator
+              log={stepLogs[stepLogs.length - 1]}
+              currentStep={currentStep}
+              maxSteps={maxSteps}
+              agentStatus={agentStatus}
+            />
+          </div>
+        )}
+
         {/* Prominent Executive Deliverables & Execution Outcome Card */}
         {finalReport && (
           <div className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-5 shadow-lg space-y-3">
@@ -585,7 +888,7 @@ export function AutonomousComputerConsole({
                     </span>
                   </h3>
                   <p className="text-[11px] text-[#8b949e]">
-                    Target: <span className="font-mono text-white">{selectedRepo ? `${selectedRepo.owner}/${selectedRepo.name}` : "Workspace"}</span> · Steps Executed: <span className="font-mono text-white">{currentStep}/{maxSteps}</span>
+                    Steps Executed: <span className="font-mono text-white">{currentStep}/{maxSteps}</span>
                   </p>
                 </div>
               </div>
@@ -611,6 +914,52 @@ export function AutonomousComputerConsole({
 
             <div className="text-xs text-[#c9d1d9] leading-relaxed whitespace-pre-wrap font-sans space-y-2">
               {finalReport}
+            </div>
+
+            {/* Interactive Human Reply & Continuation Component */}
+            <div className="mt-4 border-t border-[#30363d]/80 pt-3.5 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-300 to-pink-400">
+                  <MessageSquare className="h-3.5 w-3.5 text-purple-400" />
+                  Reply to Agent &amp; Continue Autonomous Task
+                </span>
+                <span className="rounded bg-[#21262d] px-2 py-0.5 text-[10px] font-mono text-[#8b949e]">
+                  Active Context Retained · Browser &amp; Terminal Live
+                </span>
+              </div>
+
+              <div className="relative">
+                <textarea
+                  rows={2}
+                  value={replyInput}
+                  onChange={(e) => setReplyInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      void handleSendReply();
+                    }
+                  }}
+                  placeholder="Provide requested info, phone number, credentials, or your next instruction (e.g. My phone number is +977 9800000000, link with phone number and message Bishan)..."
+                  className="w-full rounded-lg border border-[#30363d] bg-[#0d1117] p-2.5 text-xs text-white placeholder:text-[#8b949e] focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400/40"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] text-[#8b949e] flex items-center gap-1">
+                  <CornerDownLeft className="h-3 w-3 text-[#58a6ff]" />
+                  Press <kbd className="rounded border border-[#30363d] bg-[#161b22] px-1 py-0.5 text-[10px] text-white">Ctrl+Enter</kbd> to submit
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendReply()}
+                  disabled={isReplying || !replyInput.trim()}
+                  className="flex items-center gap-1.5 rounded-md bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-md transition-all disabled:opacity-40"
+                >
+                  <Send className={cn("h-3.5 w-3.5", isReplying && "animate-spin")} />
+                  {isReplying ? "Resuming Agent..." : "Send Reply & Continue Task"}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -647,34 +996,7 @@ export function AutonomousComputerConsole({
                 </div>
               ) : (
                 stepLogs.map((log, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-lg border border-[#30363d] bg-[#161b22] p-3 space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between text-[11px]">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded bg-[#21262d] px-1.5 py-0.5 font-bold text-[#58a6ff]">
-                          Step {log.step}
-                        </span>
-                        <span className="font-bold text-[#7ee787]">
-                          tool: {log.tool}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-[#8b949e]">
-                        {log.timestamp.slice(11, 19)}
-                      </span>
-                    </div>
-
-                    {log.thought && (
-                      <p className="text-[#c9d1d9] italic text-[11px]">
-                        Thought: {log.thought}
-                      </p>
-                    )}
-
-                    {log.output !== undefined && (
-                      <StructuredToolOutput output={log.output} />
-                    )}
-                  </div>
+                  <AgentStepCard key={idx} log={log} />
                 ))
               )}
             </div>
@@ -683,13 +1005,8 @@ export function AutonomousComputerConsole({
       )}
 
       {viewMode === "BROWSER" && (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-          <div className="xl:col-span-8">
-            <LiveBrowserViewport sessionId={sessionId} />
-          </div>
-          <div className="xl:col-span-4">
-            <LiveInteractiveTerminal sessionId={sessionId} />
-          </div>
+        <div className="w-full">
+          <LiveBrowserViewport sessionId={sessionId} className="min-h-[720px] xl:min-h-[840px]" />
         </div>
       )}
 
@@ -716,18 +1033,9 @@ export function AutonomousComputerConsole({
             <Activity className="h-4 w-4 text-[#58a6ff]" />
             Complete Autonomous Execution Transcript ({stepLogs.length} actions)
           </h3>
-          <div className="space-y-2 font-mono text-xs">
+          <div className="space-y-3 font-mono text-xs">
             {stepLogs.map((log, idx) => (
-              <div key={idx} className="rounded border border-[#30363d] bg-[#161b22] p-3 space-y-1">
-                <div className="flex items-center justify-between font-bold text-[#58a6ff]">
-                  <span>Action #{log.step}: {log.tool}</span>
-                  <span className="text-[#8b949e] font-normal text-[10px]">{log.timestamp}</span>
-                </div>
-                {log.thought && <p className="text-white">{log.thought}</p>}
-                {log.output !== undefined && log.output !== null && (
-                  <StructuredToolOutput output={log.output} />
-                )}
-              </div>
+              <AgentStepCard key={idx} log={log} />
             ))}
           </div>
         </div>
@@ -735,8 +1043,6 @@ export function AutonomousComputerConsole({
 
       {viewMode === "SCORECARD" && (
         <DeliveryScorecard
-          owner={selectedRepo?.owner || "CodynexNepal"}
-          repoName={selectedRepo?.name || "workspace"}
           taskId={sessionId}
         />
       )}

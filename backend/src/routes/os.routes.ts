@@ -434,6 +434,9 @@ export function createOsRouter(): Router {
   router.post('/browser/sessions/:sessionId/click', osController.browserClick);
   router.post('/browser/sessions/:sessionId/type', osController.browserType);
   router.post('/browser/sessions/:sessionId/takeover', osController.browserTakeover);
+  router.post('/browser/sessions/:sessionId/click-coordinate', osController.browserClickCoordinate);
+  router.post('/browser/sessions/:sessionId/wheel', osController.browserWheel);
+  router.post('/browser/sessions/:sessionId/key', osController.browserKeyPress);
 
   router.post('/terminal/sessions/:sessionId/execute', osController.terminalExecute);
   router.post('/terminal/executions/:executionId/cancel', osController.terminalCancel);
@@ -442,6 +445,7 @@ export function createOsRouter(): Router {
   router.post('/agent/sessions/:sessionId/pause', osController.agentPause);
   router.post('/agent/sessions/:sessionId/resume', osController.agentResume);
   router.post('/agent/sessions/:sessionId/cancel', osController.agentCancel);
+  router.post('/agent/sessions/:sessionId/reply', osController.agentReplySession);
   router.post('/agent/sessions/run', osController.agentRunSession);
 
   // --- Release Quality Gates & Delivery Scorecard ---

@@ -36,6 +36,14 @@ export interface AgentSessionExecution {
   finalAnswer?: string;
   filesWritten?: string[];
   error?: string;
+  instruction?: string;
+  roleTitle?: string;
+  owner?: string;
+  repoName?: string;
+  effectiveProvider?: string;
+  preferredModel?: string;
+  contextHistory?: string;
+  filesWrittenSet?: Set<string>;
 }
 
 export class AgentExecutionService {
@@ -62,8 +70,27 @@ export class AgentExecutionService {
       },
       {
         name: 'browser_type',
-        description: 'Type text into an input field or textarea on the current browser page.',
-        parameters: { type: 'object', properties: { selector: { type: 'string' }, text: { type: 'string' } }, required: ['selector', 'text'] },
+        description: 'Type text into an input field or contenteditable element on the browser page (supports Enter to send message/search).',
+        parameters: {
+          type: 'object',
+          properties: {
+            selector: { type: 'string', description: 'CSS selector, label, or search identifier' },
+            text: { type: 'string', description: 'Text to type' },
+            pressEnter: { type: 'boolean', description: 'Set true to press Enter immediately after typing (e.g. to send chat message or trigger search)' },
+          },
+          required: ['selector', 'text'],
+        },
+      },
+      {
+        name: 'browser_press_key',
+        description: 'Press a keyboard key in the active browser window (e.g. "Enter" to submit or send a WhatsApp message, "Escape", "Tab", "ArrowDown").',
+        parameters: {
+          type: 'object',
+          properties: {
+            key: { type: 'string', description: 'Key name (e.g. "Enter", "Tab", "Escape")' },
+          },
+          required: ['key'],
+        },
       },
       {
         name: 'browser_scroll',
@@ -72,7 +99,7 @@ export class AgentExecutionService {
       },
       {
         name: 'browser_extract',
-        description: 'Extract text and HTML content from the current active page.',
+        description: 'Extract visible text, page title, and interactive DOM elements (buttons, inputs, search fields, contenteditable textboxes) with exact selectors from the active browser page.',
         parameters: { type: 'object', properties: {} },
       },
       {
@@ -130,6 +157,11 @@ export class AgentExecutionService {
       preferredProvider ||
       (dotEnvConfig.GROQ_API_KEY ? 'groq' : dotEnvConfig.GEMINI_API_KEY ? 'gemini' : undefined);
 
+    let contextHistory = `Initial User Task: ${instruction}\n`;
+    if (owner && repoName && owner !== 'organization' && owner !== 'workspace' && repoName !== 'workspace') {
+      contextHistory += `Target Workspace: ${owner}/${repoName}\n`;
+    }
+
     const session: AgentSessionExecution = {
       sessionId,
       taskId,
@@ -138,6 +170,14 @@ export class AgentExecutionService {
       maxSteps,
       steps: [],
       startedAt: new Date().toISOString(),
+      instruction,
+      roleTitle,
+      owner,
+      repoName,
+      effectiveProvider,
+      preferredModel,
+      contextHistory,
+      filesWrittenSet: new Set<string>(),
     };
 
     this.sessions.set(sessionId, session);
@@ -153,7 +193,61 @@ export class AgentExecutionService {
       startedAt: session.startedAt,
     });
 
+    return this.executeSessionLoop(session);
+  }
+
+  async replyToSession(params: {
+    sessionId: string;
+    message: string;
+    additionalSteps?: number;
+  }): Promise<AgentSessionExecution> {
+    const { sessionId, message, additionalSteps = 15 } = params;
+    let session = this.sessions.get(sessionId);
+
+    if (!session) {
+      return this.runAgentLoop({
+        sessionId,
+        taskId: sessionId,
+        instruction: message,
+        roleTitle: 'Autonomous AI Engineer',
+        maxSteps: additionalSteps,
+      });
+    }
+
+    this.cancelledSessions.delete(sessionId);
+    this.pausedSessions.delete(sessionId);
+
+    void browserService.setHumanTakeover(sessionId, false);
+
+    session.finalAnswer = undefined;
+    session.completedAt = undefined;
+    session.status = 'RUNNING';
+    session.maxSteps = session.currentStep + additionalSteps;
+
+    // Append human operator feedback cleanly into context history
+    session.contextHistory = `${session.contextHistory || ''}\n\n[Human Operator Follow-Up Reply / User Input]:\n"${message}"\n\nContinue executing the task iteratively using your tools based on the user's reply.\n`;
+
+    socketServer.emit('agent:lifecycle', {
+      sessionId,
+      taskId: session.taskId,
+      status: 'RUNNING',
+      userReply: message,
+      currentStep: session.currentStep,
+      maxSteps: session.maxSteps,
+    });
+
+    return this.executeSessionLoop(session);
+  }
+
+  private async executeSessionLoop(session: AgentSessionExecution): Promise<AgentSessionExecution> {
     const tools = this.getToolDefinitions();
+    const roleTitle = session.roleTitle || 'Autonomous AI Engineer';
+    const effectiveProvider = session.effectiveProvider;
+    const preferredModel = session.preferredModel;
+    const owner = session.owner || 'workspace';
+    const repoName = session.repoName || 'workspace';
+    const filesWrittenSet = session.filesWrittenSet || new Set<string>();
+
     const systemPrompt = `You are ${roleTitle}, an autonomous AI software engineer and computer operating agent inside CodyNex OS.
 You possess real computer capabilities: operating browsers, executing terminal commands, reading and writing files.
 You MUST operate iteratively:
@@ -172,21 +266,19 @@ Output strictly valid JSON with this shape:
 Available tools:
 ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.parameters)})`).join('\n')}`;
 
-    let contextHistory = `Initial User Task: ${instruction}\nTarget Workspace: ${owner}/${repoName}\n`;
     session.status = 'RUNNING';
-    const filesWrittenSet = new Set<string>();
 
-    while (session.currentStep < maxSteps) {
+    while (session.currentStep < session.maxSteps) {
       // Check cancellation
-      if (this.cancelledSessions.has(sessionId)) {
+      if (this.cancelledSessions.has(session.sessionId)) {
         session.status = 'CANCELLED';
         break;
       }
 
       // Check pause
-      while (this.pausedSessions.has(sessionId)) {
+      while (this.pausedSessions.has(session.sessionId)) {
         session.status = 'PAUSED';
-        socketServer.emit('agent:lifecycle', { sessionId, taskId, status: 'PAUSED' });
+        socketServer.emit('agent:lifecycle', { sessionId: session.sessionId, taskId: session.taskId, status: 'PAUSED' });
         await new Promise((r) => setTimeout(r, 1000));
       }
 
@@ -194,10 +286,10 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
       session.currentStep++;
 
       socketServer.emit('agent:thinking', {
-        sessionId,
-        taskId,
+        sessionId: session.sessionId,
+        taskId: session.taskId,
         step: session.currentStep,
-        maxSteps,
+        maxSteps: session.maxSteps,
         timestamp: new Date().toISOString(),
       });
 
@@ -206,15 +298,15 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
         aiResponse = await this.modelRouter.complete(
           {
             systemPrompt,
-            userPrompt: `Current Execution Context & History:\n${contextHistory}\nDecide the next action or complete the task. Return JSON.`,
+            userPrompt: `Current Execution Context & History:\n${session.contextHistory}\nDecide the next action or complete the task. Return JSON.`,
             responseFormat: 'json',
             maxOutputTokens: 2048,
           },
-          { taskId, preferredProvider: effectiveProvider, preferredModel, agentRole: roleTitle },
+          { taskId: session.taskId, preferredProvider: effectiveProvider, preferredModel, agentRole: roleTitle },
         );
       } catch (err: any) {
-        logger.error('Agent reasoning step error', { error: err.message, taskId });
-        contextHistory += `\n[Agent Inference Error: ${err.message}. Retrying action...]`;
+        logger.error('Agent reasoning step error', { error: err.message, taskId: session.taskId });
+        session.contextHistory += `\n[Agent Inference Error: ${err.message}. Retrying action...]`;
         await new Promise((r) => setTimeout(r, 1000));
         continue;
       }
@@ -243,8 +335,8 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
       session.steps.push(stepRecord);
 
       socketServer.emit('agent:tool_started', {
-        sessionId,
-        taskId,
+        sessionId: session.sessionId,
+        taskId: session.taskId,
         step: session.currentStep,
         thought,
         tool: toolName,
@@ -268,7 +360,7 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
       const startMs = Date.now();
       let toolResult: unknown;
       try {
-        toolResult = await this.dispatchTool(toolName, toolInput, { sessionId, owner, repoName });
+        toolResult = await this.dispatchTool(toolName, toolInput, { sessionId: session.sessionId, owner, repoName });
         stepRecord.status = 'SUCCESS';
         stepRecord.toolOutput = toolResult;
       } catch (err: any) {
@@ -279,8 +371,8 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
       stepRecord.durationMs = Date.now() - startMs;
 
       socketServer.emit('agent:tool_completed', {
-        sessionId,
-        taskId,
+        sessionId: session.sessionId,
+        taskId: session.taskId,
         step: session.currentStep,
         tool: toolName,
         output: toolResult,
@@ -290,23 +382,24 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
       });
 
       // Append observation to context
-      contextHistory += `\nStep ${session.currentStep} Tool [${toolName}] Input: ${JSON.stringify(toolInput)}\nObservation: ${
+      session.contextHistory += `\nStep ${session.currentStep} Tool [${toolName}] Input: ${JSON.stringify(toolInput)}\nObservation: ${
         typeof toolResult === 'string' ? toolResult.slice(0, 2000) : JSON.stringify(toolResult).slice(0, 2000)
       }\n`;
 
       // Bound context window to keep inference lean and ultra-responsive
-      if (contextHistory.length > 8000) {
-        const lines = contextHistory.split('\n');
+      if (session.contextHistory && session.contextHistory.length > 8000) {
+        const lines = session.contextHistory.split('\n');
         const header = lines.slice(0, 3).join('\n');
         const recent = lines.slice(-25).join('\n');
-        contextHistory = `${header}\n... [earlier steps truncated for speed] ...\n${recent}`;
+        session.contextHistory = `${header}\n... [earlier steps truncated for speed] ...\n${recent}`;
       }
     }
 
     session.filesWritten = Array.from(filesWrittenSet);
+    session.filesWrittenSet = filesWrittenSet;
 
     if (session.status !== 'COMPLETED' && session.status !== 'CANCELLED') {
-      session.status = session.currentStep >= maxSteps ? 'COMPLETED' : 'FAILED';
+      session.status = session.currentStep >= session.maxSteps ? 'COMPLETED' : 'FAILED';
     }
 
     // If finalAnswer was not set by task_complete, synthesize an in-depth executive debrief
@@ -317,9 +410,8 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
             systemPrompt:
               'You are a Principal Software Architect synthesizing an executive deliverable debrief of an autonomous AI engineering run.',
             userPrompt: `Autonomous Task Session Completed.
-Task: "${instruction}"
-Target Workspace: "${owner}/${repoName}"
-Total Steps: ${session.currentStep} of ${maxSteps}
+Task: "${session.instruction}"
+${owner && repoName && owner !== 'organization' && owner !== 'workspace' && repoName !== 'workspace' ? `Target Workspace: "${owner}/${repoName}"\n` : ''}Total Steps: ${session.currentStep} of ${session.maxSteps}
 Files Written: ${session.filesWritten.length > 0 ? session.filesWritten.join(', ') : 'None'}
 
 Actions Log:
@@ -348,7 +440,7 @@ Generate a comprehensive Executive Deliverables Report in markdown:
 (What the human operator or agent should do next)`,
             maxOutputTokens: 2048,
           },
-          { taskId, preferredProvider: effectiveProvider, preferredModel, agentRole: roleTitle },
+          { taskId: session.taskId, preferredProvider: effectiveProvider, preferredModel, agentRole: roleTitle },
         );
         session.finalAnswer = debriefRes.content;
       } catch {
@@ -360,8 +452,8 @@ Generate a comprehensive Executive Deliverables Report in markdown:
 
     session.completedAt = new Date().toISOString();
     socketServer.emit('agent:lifecycle', {
-      sessionId,
-      taskId,
+      sessionId: session.sessionId,
+      taskId: session.taskId,
       status: session.status,
       completedAt: session.completedAt,
       finalAnswer: session.finalAnswer,
@@ -388,8 +480,14 @@ Generate a comprehensive Executive Deliverables Report in markdown:
         return { url: state.url, title: state.title, status: `Clicked ${input.selector}` };
       }
       case 'browser_type': {
-        await browserService.type(sessionId, String(input.selector), String(input.text));
-        return { status: `Typed text into ${input.selector}` };
+        const pressEnter = Boolean(input.pressEnter);
+        await browserService.type(sessionId, String(input.selector), String(input.text), pressEnter);
+        return { status: `Typed text into ${input.selector}${pressEnter ? ' and pressed Enter' : ''}` };
+      }
+      case 'browser_press_key': {
+        const key = String(input.key || 'Enter');
+        await browserService.keyPress(sessionId, key);
+        return { status: `Pressed key ${key}` };
       }
       case 'browser_scroll': {
         await browserService.scroll(sessionId, input.direction === 'UP' ? 'UP' : 'DOWN', input.amount || 400);
@@ -397,7 +495,12 @@ Generate a comprehensive Executive Deliverables Report in markdown:
       }
       case 'browser_extract': {
         const content = await browserService.extractContent(sessionId);
-        return { url: content.url, title: content.title, snippet: content.text.slice(0, 1500) };
+        return {
+          url: content.url,
+          title: content.title,
+          interactiveElements: content.interactiveElements,
+          snippet: content.text.slice(0, 1500),
+        };
       }
       case 'terminal_execute': {
         const repoDir = this.workspaceService.getRepoDir(owner, repoName);

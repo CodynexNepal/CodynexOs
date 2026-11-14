@@ -239,6 +239,7 @@ export class OsController {
         leaseExpiresAt: null,
       });
       await this.taskRepo.appendLog(id, 'INFO', 'Task manually re-queued by CEO');
+      socketServer.emit('task:updated', { taskId: id, status: TaskStatus.QUEUED });
       await this.auditService.log({
         actorType: 'USER',
         actorId: req.user!.userId,
@@ -263,6 +264,7 @@ export class OsController {
         leaseExpiresAt: null,
       });
       await this.taskRepo.appendLog(id, 'WARN', 'Task cancelled by CEO');
+      socketServer.emit('task:updated', { taskId: id, status: TaskStatus.CANCELLED });
       await this.auditService.log({
         actorType: 'USER',
         actorId: req.user!.userId,
@@ -513,6 +515,43 @@ export class OsController {
     }
   };
 
+  browserClickCoordinate = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const { x, y } = req.body;
+      await browserService.clickCoordinate(sessionId, Number(x), Number(y));
+      res.status(STATUS_CODE.OK).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  browserWheel = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const { deltaX = 0, deltaY = 0 } = req.body;
+      await browserService.mouseWheel(sessionId, Number(deltaX), Number(deltaY));
+      res.status(STATUS_CODE.OK).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  browserKeyPress = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const { key, text } = req.body;
+      if (text) {
+        await browserService.typeDirect(sessionId, String(text));
+      } else if (key) {
+        await browserService.keyPress(sessionId, String(key));
+      }
+      res.status(STATUS_CODE.OK).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   terminalExecute = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const sessionId = getRequiredParam(req, 'sessionId');
@@ -574,6 +613,24 @@ export class OsController {
       const sessionId = getRequiredParam(req, 'sessionId');
       const ok = agentExecutionService.cancelSession(sessionId);
       res.status(STATUS_CODE.OK).json({ success: true, data: { cancelled: ok } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  agentReplySession = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const { message, additionalSteps } = req.body;
+      if (!message || typeof message !== 'string') {
+        throw ApiError.badRequest('A non-empty reply message is required.');
+      }
+      void agentExecutionService.replyToSession({
+        sessionId,
+        message,
+        additionalSteps: typeof additionalSteps === 'number' ? additionalSteps : 15,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data: { sessionId, status: 'REPLIED' } });
     } catch (err) {
       next(err);
     }

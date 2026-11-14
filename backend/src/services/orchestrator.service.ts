@@ -1151,14 +1151,23 @@ export class OrchestratorService {
       }
       }
 
+      let qaVerdict: QaVerdict | undefined;
+      let qaReportId: string | undefined;
+
       if (task.taskType === 'qa_verify') {
         const repoId = typeof task.inputPayload.repoId === 'string' ? task.inputPayload.repoId : '';
         if (repoId && this.engineeringService) {
-          await this.engineeringService.runWorkspaceChecks(
+          const checkRes = await this.engineeringService.runWorkspaceChecks(
             repoId,
             task.id,
             task.project?.createdBy || this.workerId,
           );
+          if (checkRes && 'verdict' in checkRes) {
+            qaVerdict = checkRes.verdict;
+            if ('id' in checkRes && typeof (checkRes as { id?: string }).id === 'string') {
+              qaReportId = (checkRes as { id: string }).id;
+            }
+          }
         } else {
           const qa = await this.engRepo.saveQaReport({
             taskId: task.id,
@@ -1170,25 +1179,49 @@ export class OrchestratorService {
             ],
             summary: 'Automated QA verification completed.',
           });
-          await this.taskRepo.updateById(task.id, {
-            status: TaskStatus.COMPLETED,
-            outputPayload,
-            verificationResult: { qaReportId: qa.id, verdict: qa.verdict },
-            leaseOwner: null,
-            leaseExpiresAt: null,
-            completedAt: new Date(),
-          });
+          qaVerdict = qa.verdict;
+          qaReportId = qa.id;
         }
-      } else {
+      }
+
+      // If QA checks evaluated to FAILED, record accurate execution failure and exit cleanly
+      if (qaVerdict === QaVerdict.FAILED) {
         await this.taskRepo.updateById(task.id, {
-          status: TaskStatus.COMPLETED,
+          status: TaskStatus.FAILED,
           outputPayload,
-          verificationResult: { verifiedBy: emp?.slug ?? 'orchestrator', verifiedAt: new Date().toISOString() },
+          verificationResult: { qaReportId, verdict: qaVerdict },
           leaseOwner: null,
           leaseExpiresAt: null,
-          completedAt: new Date(),
         });
+        await this.taskRepo.updateExecution(execution.id, {
+          status: 'FAILED',
+          errorCode: 'QA_VERIFICATION_FAILED',
+          errorMessage: 'QA verification assertions failed on workspace files',
+          finishedAt: new Date(),
+        });
+        await this.taskRepo.appendLog(
+          task.id,
+          'WARN',
+          'QA verification completed: Quality assertions failed on workspace files.',
+          {},
+          execution.id,
+        );
+        socketServer.emit('task:updated', { taskId: task.id, status: TaskStatus.FAILED });
+        await this.reconcileProjectStatus(task.projectId);
+        return;
       }
+
+      // Mark task as COMPLETED in database
+      await this.taskRepo.updateById(task.id, {
+        status: TaskStatus.COMPLETED,
+        outputPayload,
+        verificationResult: qaReportId || qaVerdict
+          ? { qaReportId, verdict: qaVerdict ?? QaVerdict.PASSED }
+          : { verifiedBy: emp?.slug ?? 'orchestrator', verifiedAt: new Date().toISOString() },
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        completedAt: new Date(),
+      });
 
       await this.taskRepo.updateExecution(execution.id, {
         status: 'SUCCEEDED',

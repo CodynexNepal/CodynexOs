@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckSquare, Eye, Plus, RotateCcw, XCircle } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card } from "@/components/ui/Card";
@@ -60,9 +60,33 @@ export default function TasksPage() {
   const [taskType, setTaskType] = useState("code");
   const [creating, setCreating] = useState(false);
 
-  useDomainSocket(() => {
+  useDomainSocket((eventName, payload) => {
     refetch();
+    if (eventName === "task:log" && payload && typeof payload === "object") {
+      const logItem = payload as TaskLogItem;
+      if (selectedTask && logItem.taskId === selectedTask.id) {
+        setLogs((prev) => {
+          if (prev.some((l) => l.id === logItem.id)) return prev;
+          return [...prev, logItem];
+        });
+      }
+    }
   });
+
+  // Keep selectedTask synchronized with live task updates
+  useEffect(() => {
+    if (selectedTask && data) {
+      const updated = data.find((t) => t.id === selectedTask.id);
+      if (
+        updated &&
+        (updated.status !== selectedTask.status ||
+          updated.retryCount !== selectedTask.retryCount ||
+          updated.outputPayload !== selectedTask.outputPayload)
+      ) {
+        setSelectedTask(updated);
+      }
+    }
+  }, [data, selectedTask]);
 
   const openLogs = async (task: TaskItem) => {
     setSelectedTask(task);

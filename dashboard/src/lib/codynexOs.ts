@@ -406,6 +406,12 @@ export const codynexApi = {
       api.post(`/browser/sessions/${sessionId}/type`, { selector, text }),
     takeover: (sessionId: string, enabled: boolean) =>
       api.post(`/browser/sessions/${sessionId}/takeover`, { enabled }),
+    clickCoordinate: (sessionId: string, x: number, y: number) =>
+      api.post(`/browser/sessions/${sessionId}/click-coordinate`, { x, y }),
+    wheel: (sessionId: string, deltaY: number, deltaX = 0) =>
+      api.post(`/browser/sessions/${sessionId}/wheel`, { deltaX, deltaY }),
+    key: (sessionId: string, key?: string, text?: string) =>
+      api.post(`/browser/sessions/${sessionId}/key`, { key, text }),
   },
   terminal: {
     execute: (sessionId: string, command: string, cwd?: string) =>
@@ -429,5 +435,7 @@ export const codynexApi = {
     pause: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/pause`),
     resume: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/resume`),
     cancel: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/cancel`),
+    reply: (sessionId: string, message: string, additionalSteps?: number) =>
+      api.post(`/agent/sessions/${sessionId}/reply`, { message, additionalSteps }),
   },
 };

@@ -3,10 +3,12 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import {
   ExternalLink,
+  Eye,
   Globe,
   Hand,
   Maximize2,
   Minimize2,
+  Monitor,
   Play,
   RefreshCw,
   Search,
@@ -54,10 +56,64 @@ export function LiveBrowserViewport({
 
   const [loading, setLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [scaleMode, setScaleMode] = useState<"FIT_WIDTH" | "CONTAIN" | "ACTUAL">("FIT_WIDTH");
   const [showConsole, setShowConsole] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const consoleBottomRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const [clickRipples, setClickRipples] = useState<Array<{ id: number; x: number; y: number }>>([]);
+  const lastWheelTime = useRef<number>(0);
+
+  // Direct click-to-interact on the browser viewport
+  const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    const rect = img.getBoundingClientRect();
+    const relX = e.clientX - rect.left;
+    const relY = e.clientY - rect.top;
+
+    // Normalize to 1440x900 native browser resolution
+    const normX = Math.max(0, Math.min(1, relX / rect.width));
+    const normY = Math.max(0, Math.min(1, relY / rect.height));
+    const x = Math.round(normX * 1440);
+    const y = Math.round(normY * 900);
+
+    const rippleId = Date.now();
+    setClickRipples((prev) => [...prev.slice(-3), { id: rippleId, x: relX, y: relY }]);
+    setTimeout(() => {
+      setClickRipples((prev) => prev.filter((r) => r.id !== rippleId));
+    }, 500);
+
+    try {
+      await codynexApi.browser.clickCoordinate(sessionId, x, y);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Smooth mouse wheel scrolling
+  const handleWheel = async (e: React.WheelEvent<HTMLDivElement>) => {
+    const now = Date.now();
+    if (now - lastWheelTime.current < 50) return; // Smooth 20fps throttle
+    lastWheelTime.current = now;
+
+    try {
+      await codynexApi.browser.wheel(sessionId, Math.round(e.deltaY));
+    } catch {
+      // ignore
+    }
+  };
+
+  // Escape key exits full screen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isExpanded) {
+        setIsExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isExpanded]);
 
   // Fetch initial browser state
   const fetchState = useCallback(async () => {
@@ -121,6 +177,9 @@ export function LiveBrowserViewport({
     if (data.sessionId !== sessionId && data.sessionId !== undefined) return;
 
     if (eventName === "browser:navigation") {
+      if (imgRef.current && typeof data.screenshot === "string") {
+        imgRef.current.src = `data:image/jpeg;base64,${data.screenshot}`;
+      }
       setState((prev) => ({
         ...prev,
         url: typeof data.url === "string" ? data.url : prev.url,
@@ -131,13 +190,22 @@ export function LiveBrowserViewport({
       if (typeof data.url === "string") setUrlInput(data.url);
     } else if (eventName === "browser:screenshot") {
       if (typeof data.screenshot === "string") {
-        setState((prev) => ({
-          ...prev,
-          lastScreenshot: data.screenshot as string,
-          url: typeof data.url === "string" ? data.url : prev.url,
-        }));
+        // Direct GPU image assignment: Zero React re-renders for true 60fps mobile-smooth playback
+        if (imgRef.current) {
+          imgRef.current.src = `data:image/jpeg;base64,${data.screenshot}`;
+        }
+        if (!state.lastScreenshot) {
+          setState((prev) => ({
+            ...prev,
+            lastScreenshot: data.screenshot as string,
+            url: typeof data.url === "string" ? data.url : prev.url,
+          }));
+        }
       }
     } else if (eventName === "browser:action") {
+      if (imgRef.current && typeof data.screenshot === "string") {
+        imgRef.current.src = `data:image/jpeg;base64,${data.screenshot}`;
+      }
       setState((prev) => ({
         ...prev,
         url: typeof data.url === "string" ? data.url : prev.url,
@@ -160,8 +228,8 @@ export function LiveBrowserViewport({
   return (
     <div
       className={cn(
-        "flex flex-col rounded-xl border border-[#30363d] bg-[#0d1117] text-[#c9d1d9] shadow-2xl overflow-hidden font-sans",
-        isExpanded ? "fixed inset-4 z-50 rounded-xl" : "w-full",
+        "flex flex-col border border-[#30363d] bg-[#0d1117] text-[#c9d1d9] shadow-2xl overflow-hidden font-sans",
+        isExpanded ? "fixed inset-0 z-50 rounded-none w-screen h-screen bg-[#010409]" : "w-full rounded-xl",
         className
       )}
     >
@@ -238,6 +306,22 @@ export function LiveBrowserViewport({
             )}
           </button>
 
+          {/* Fit Width / Contain Scale Toggle */}
+          <button
+            type="button"
+            onClick={() => setScaleMode((prev) => (prev === "FIT_WIDTH" ? "CONTAIN" : "FIT_WIDTH"))}
+            className={cn(
+              "flex items-center gap-1 rounded border border-[#30363d] px-2 py-1 text-xs font-semibold transition-colors",
+              scaleMode === "FIT_WIDTH"
+                ? "bg-[#21262d] text-[#58a6ff] border-[#58a6ff]/40"
+                : "bg-[#0d1117] text-[#8b949e] hover:text-white"
+            )}
+            title="Toggle between Full Width (100% Screen) and Contained View"
+          >
+            <Monitor className="h-3 w-3" />
+            <span className="hidden sm:inline">{scaleMode === "FIT_WIDTH" ? "Full Width (100%)" : "Fit View"}</span>
+          </button>
+
           {/* Console Drawer Toggle */}
           <button
             type="button"
@@ -266,6 +350,7 @@ export function LiveBrowserViewport({
             type="button"
             onClick={() => setIsExpanded((prev) => !prev)}
             className="flex h-7 w-7 items-center justify-center rounded border border-[#30363d] bg-[#0d1117] text-[#8b949e] hover:text-white transition-colors"
+            title={isExpanded ? "Exit Fullscreen (Esc)" : "Full Screen Browser View"}
           >
             {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
           </button>
@@ -301,9 +386,54 @@ export function LiveBrowserViewport({
           disabled={loading}
           className="rounded bg-[#238636] px-3 py-1 font-sans text-xs font-semibold text-white hover:bg-[#2ea043] transition-colors"
         >
-          Go
+          {loading ? "Loading..." : "Go"}
         </button>
       </form>
+
+      {/* Quick Navigation Chips */}
+      <div className="flex items-center gap-1.5 border-b border-[#30363d]/60 bg-[#161b22]/70 px-4 py-1 text-[11px] text-[#8b949e] overflow-x-auto">
+        <span className="font-semibold text-white/80 shrink-0">Quick Demo Sites:</span>
+        <button
+          type="button"
+          onClick={() => {
+            setUrlInput("https://news.ycombinator.com");
+            void handleNavigate("https://news.ycombinator.com");
+          }}
+          className="rounded border border-[#30363d] bg-[#0d1117] px-2 py-0.5 text-[10px] text-[#58a6ff] hover:bg-[#21262d] hover:text-white transition-colors shrink-0"
+        >
+          Hacker News
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setUrlInput("https://en.wikipedia.org");
+            void handleNavigate("https://en.wikipedia.org");
+          }}
+          className="rounded border border-[#30363d] bg-[#0d1117] px-2 py-0.5 text-[10px] text-[#58a6ff] hover:bg-[#21262d] hover:text-white transition-colors shrink-0"
+        >
+          Wikipedia
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setUrlInput("https://github.com");
+            void handleNavigate("https://github.com");
+          }}
+          className="rounded border border-[#30363d] bg-[#0d1117] px-2 py-0.5 text-[10px] text-[#58a6ff] hover:bg-[#21262d] hover:text-white transition-colors shrink-0"
+        >
+          GitHub
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setUrlInput("http://localhost:3000/overview");
+            void handleNavigate("http://localhost:3000/overview");
+          }}
+          className="rounded border border-[#30363d] bg-[#0d1117] px-2 py-0.5 text-[10px] text-[#7ee787] hover:bg-[#21262d] hover:text-white transition-colors shrink-0"
+        >
+          Local Dashboard
+        </button>
+      </div>
 
       {/* Error Notice */}
       {errorMsg && (
@@ -318,25 +448,60 @@ export function LiveBrowserViewport({
         </div>
       )}
 
-      {/* Viewport Screencast Area */}
-      <div className="relative flex-1 bg-[#010409] flex flex-col items-center justify-center min-h-[420px] max-h-[640px] overflow-hidden">
+      {/* Viewport Screencast Area - 60fps Mobile-Smooth Direct GPU Feed */}
+      <div
+        onWheel={handleWheel}
+        className={cn(
+          "relative flex-1 bg-[#010409] flex flex-col items-center justify-center overflow-auto",
+          isExpanded ? "h-[calc(100vh-105px)]" : "min-h-[580px] xl:min-h-[720px] max-h-[85vh]"
+        )}
+      >
+        {loading && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xs text-white space-y-2">
+            <RefreshCw className="h-6 w-6 animate-spin text-[#58a6ff]" />
+            <p className="font-mono text-xs text-[#58a6ff]">Navigating & capturing live browser frame...</p>
+          </div>
+        )}
+
         {state.lastScreenshot ? (
-          <div className="relative w-full h-full flex items-center justify-center overflow-auto p-2">
-            {/* Live Screencast Frame */}
+          <div
+            className={cn(
+              "relative w-full h-full flex items-center justify-center overflow-auto",
+              scaleMode === "FIT_WIDTH" ? "p-0" : "p-2"
+            )}
+          >
+            {/* Live Screencast Frame - Direct GPU Render without transition delays */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
+              ref={imgRef}
               src={`data:image/jpeg;base64,${state.lastScreenshot}`}
               alt={state.title || "Browser Live Screencast"}
-              className="max-w-full max-h-full rounded border border-[#30363d] object-contain shadow-2xl"
+              onClick={handleImageClick}
+              title="Click anywhere to interact with the live browser"
+              className={cn(
+                "select-none cursor-pointer",
+                scaleMode === "FIT_WIDTH"
+                  ? "w-full h-auto object-cover rounded-none"
+                  : "max-w-full max-h-full object-contain rounded border border-[#30363d] shadow-2xl"
+              )}
             />
 
+            {/* Click Ripple Indicators */}
+            {clickRipples.map((r) => (
+              <span
+                key={r.id}
+                style={{ left: r.x, top: r.y }}
+                className="pointer-events-none absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#58a6ff] bg-[#58a6ff]/30 animate-ping"
+              />
+            ))}
+
             {/* Live Screencast Overlay Tag */}
-            <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-md border border-[#30363d] bg-[#161b22]/90 px-2.5 py-1 text-[11px] font-mono backdrop-blur-sm">
+            <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-md border border-[#30363d] bg-[#161b22]/90 px-2.5 py-1 text-[11px] font-mono backdrop-blur-sm shadow-lg pointer-events-none">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#9FE870] opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-[#9FE870]"></span>
               </span>
-              <span className="text-white font-bold">Live Stream (60fps Screencast)</span>
+              <span className="text-white font-bold">CDP Screencast (Smooth 60fps)</span>
             </div>
           </div>
         ) : (
