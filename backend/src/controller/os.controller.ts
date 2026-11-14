@@ -192,16 +192,30 @@ export class OsController {
 
   agentLiveActivity = async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const projectId =
+        typeof req.query.projectId === 'string' && req.query.projectId.trim()
+          ? req.query.projectId.trim()
+          : undefined;
       const runningTasks = await this.taskRepo.findRunningTasks();
       const recentLogs = await this.taskRepo.getRecentLogs(50);
-      const recentTasks = await this.taskRepo.findAll();
+      const recentTasks = projectId
+        ? await this.taskRepo.findAll({ projectId })
+        : await this.taskRepo.findAll();
 
       res.status(STATUS_CODE.OK).json({
         success: true,
         data: {
-          runningTasks,
-          recentLogs,
-          recentTasks: recentTasks.slice(0, 15),
+          runningTasks: projectId
+            ? runningTasks.filter((t) => t.projectId === projectId)
+            : runningTasks,
+          recentLogs: projectId
+            ? recentLogs.filter(
+                (l) =>
+                  (l.metadata as any)?.projectId === projectId ||
+                  recentTasks.some((t) => t.id === l.taskId),
+              )
+            : recentLogs,
+          recentTasks: recentTasks.slice(0, 30),
         },
       });
     } catch (err) {

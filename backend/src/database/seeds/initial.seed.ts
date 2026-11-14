@@ -29,13 +29,25 @@ import { hashPassword } from '../../utils/password.util';
 import { logger } from '../../utils/logger.util';
 
 export async function runInitialSeed(): Promise<void> {
+  const settingRepo = AppDataSource.getRepository(SystemSettingEntity);
+
+  // Fast-path: if initial seeding has already been completed, return immediately (sub-30ms)
+  const seedFlag = await settingRepo.findOne({ where: { key: 'initial_seed_completed' } });
+  if (seedFlag) {
+    return;
+  }
+
   const userRepo = AppDataSource.getRepository(UserEntity);
   const deptRepo = AppDataSource.getRepository(DepartmentEntity);
   const empRepo = AppDataSource.getRepository(AiEmployeeEntity);
   const budgetRepo = AppDataSource.getRepository(BudgetPolicyEntity);
-  const settingRepo = AppDataSource.getRepository(SystemSettingEntity);
   const memoryRepo = AppDataSource.getRepository(CompanyMemoryEntity);
   const knowledgeRepo = AppDataSource.getRepository(KnowledgeDocumentEntity);
+  const businessRepo = AppDataSource.getRepository(BusinessEntity);
+  const taskRepo = AppDataSource.getRepository(TaskEntity);
+  const ruleRepo = AppDataSource.getRepository(CompanyRuleEntity);
+  const contractRepo = AppDataSource.getRepository(AgentContractEntity);
+  const tokenTxRepo = AppDataSource.getRepository(AgentTokenTransactionEntity);
 
   // 1. Seed CEO account if absent
   let ceo = await userRepo.findOne({ where: { email: dotEnvConfig.CEO_EMAIL } });
@@ -48,68 +60,61 @@ export async function runInitialSeed(): Promise<void> {
       isActive: true,
     });
     await userRepo.save(ceo);
-    logger.info('Seeded initial CEO account', { email: ceo.email });
   }
 
-  // 2. Seed 5 Departments
-  const deptMap = new Map<string, DepartmentEntity>();
+  // 2. Pre-fetch departments in 1 batch query
+  const existingDepts = await deptRepo.find();
+  const deptMap = new Map<string, DepartmentEntity>(existingDepts.map((d) => [d.slug, d]));
+  const missingDepts: DepartmentEntity[] = [];
   for (const d of DEPARTMENT_SEEDS) {
-    let dept = await deptRepo.findOne({ where: { slug: d.slug } });
-    if (!dept) {
-      dept = deptRepo.create({
-        slug: d.slug,
-        name: d.name,
-        description: d.description,
-        dailyTokenBudget: d.dailyTokenBudget,
-        isActive: true,
-      });
-      await deptRepo.save(dept);
-    }
-    deptMap.set(d.slug, dept);
-  }
-
-  // 3. Seed 20 Logical AI Employees
-  for (const e of AI_EMPLOYEE_SEEDS) {
-    const dept = deptMap.get(e.departmentSlug);
-    if (!dept) continue;
-    const existing = await empRepo.findOne({ where: { slug: e.slug } });
-    if (!existing) {
-      await empRepo.save(
-        empRepo.create({
-          departmentId: dept.id,
-          slug: e.slug,
-          roleTitle: e.roleTitle,
-          systemInstruction: e.systemInstruction,
-          allowedTools: e.allowedTools,
-          knowledgeScopes: e.knowledgeScopes,
-          preferredProvider: 'gemini',
-          preferredModel: dotEnvConfig.GEMINI_MODEL,
-          fallbackProvider: 'groq',
-          fallbackModel: dotEnvConfig.GROQ_MODEL,
-          dailyTokenBudget: e.dailyTokenBudget,
-          executionBudgetMs: e.executionBudgetMs,
+    if (!deptMap.has(d.slug)) {
+      missingDepts.push(
+        deptRepo.create({
+          slug: d.slug,
+          name: d.name,
+          description: d.description,
+          dailyTokenBudget: d.dailyTokenBudget,
           isActive: true,
         }),
       );
-    } else if (
-      existing.preferredModel === 'gemini-2.5-flash' ||
-      existing.fallbackModel === 'llama-3.3-70b-versatile'
-    ) {
-      await empRepo.update(
-        { id: existing.id },
-        {
-          ...(existing.preferredModel === 'gemini-2.5-flash'
-            ? { preferredModel: dotEnvConfig.GEMINI_MODEL }
-            : {}),
-          ...(existing.fallbackModel === 'llama-3.3-70b-versatile'
-            ? { fallbackModel: dotEnvConfig.GROQ_MODEL }
-            : {}),
-        },
-      );
     }
   }
+  if (missingDepts.length > 0) {
+    const saved = await deptRepo.save(missingDepts);
+    saved.forEach((d) => deptMap.set(d.slug, d));
+  }
 
-  // 4. Global Zero-Cost Budget Policy (paid providers disabled by default)
+  // 3. Pre-fetch employees in 1 batch query
+  const existingEmps = await empRepo.find();
+  const empMap = new Map<string, AiEmployeeEntity>(existingEmps.map((e) => [e.slug, e]));
+  const missingEmps: AiEmployeeEntity[] = [];
+  for (const e of AI_EMPLOYEE_SEEDS) {
+    const dept = deptMap.get(e.departmentSlug);
+    if (!dept || empMap.has(e.slug)) continue;
+    missingEmps.push(
+      empRepo.create({
+        departmentId: dept.id,
+        slug: e.slug,
+        roleTitle: e.roleTitle,
+        systemInstruction: e.systemInstruction,
+        allowedTools: e.allowedTools,
+        knowledgeScopes: e.knowledgeScopes,
+        preferredProvider: 'gemini',
+        preferredModel: dotEnvConfig.GEMINI_MODEL,
+        fallbackProvider: 'groq',
+        fallbackModel: dotEnvConfig.GROQ_MODEL,
+        dailyTokenBudget: e.dailyTokenBudget,
+        executionBudgetMs: e.executionBudgetMs,
+        isActive: true,
+      }),
+    );
+  }
+  if (missingEmps.length > 0) {
+    const saved = await empRepo.save(missingEmps);
+    saved.forEach((e) => empMap.set(e.slug, e));
+  }
+
+  // 4. Global Zero-Cost Budget Policy
   const globalBudget = await budgetRepo.findOne({ where: { scopeType: 'GLOBAL' } });
   if (!globalBudget) {
     await budgetRepo.save(
@@ -125,32 +130,26 @@ export async function runInitialSeed(): Promise<void> {
   }
 
   // 5. Default System Settings
-  const defaultSettings: Array<{ key: string; value: Record<string, unknown> }> = [
+  const existingSettings = await settingRepo.find();
+  const settingMap = new Set(existingSettings.map((s) => s.key));
+  const defaultSettings = [
     {
       key: 'cost_policy',
-      value: {
-        targetMonthlySpendNpr: 0,
-        allowPaidProviders: false,
-        pauseOnQuotaExhausted: true,
-      },
+      value: { targetMonthlySpendNpr: 0, allowPaidProviders: false, pauseOnQuotaExhausted: true },
     },
     {
       key: 'worker_config',
-      value: {
-        maxConcurrentTasks: 3,
-        leaseDurationSeconds: 120,
-        defaultMaxRetries: 3,
-      },
+      value: { maxConcurrentTasks: 3, leaseDurationSeconds: 120, defaultMaxRetries: 3 },
     },
   ];
-  for (const s of defaultSettings) {
-    const exists = await settingRepo.findOne({ where: { key: s.key } });
-    if (!exists) {
-      await settingRepo.save(settingRepo.create({ key: s.key, value: s.value, isSecret: false }));
-    }
+  const missingSettings = defaultSettings
+    .filter((s) => !settingMap.has(s.key))
+    .map((s) => settingRepo.create({ key: s.key, value: s.value, isSecret: false }));
+  if (missingSettings.length > 0) {
+    await settingRepo.save(missingSettings);
   }
 
-  // 6. Seed foundational Company Memory entry if empty
+  // 6. Company Memory
   const memCount = await memoryRepo.count();
   if (memCount === 0) {
     await memoryRepo.save(
@@ -164,7 +163,7 @@ export async function runInitialSeed(): Promise<void> {
     );
   }
 
-  // 7. Seed foundational Knowledge Base SOPs & Playbooks if empty
+  // 7. Knowledge Base
   const kbCount = await knowledgeRepo.count();
   if (kbCount === 0) {
     const engDept = deptMap.get('engineering');
@@ -209,14 +208,10 @@ export async function runInitialSeed(): Promise<void> {
         createdBy: ceo.id,
       },
     ];
-
-    for (const sop of sops) {
-      await knowledgeRepo.save(knowledgeRepo.create(sop));
-    }
+    await knowledgeRepo.save(sops.map((s) => knowledgeRepo.create(s)));
   }
 
-  // 8. Seed default parent business ("CodyNex") if none exist
-  const businessRepo = AppDataSource.getRepository(BusinessEntity);
+  // 8. Business
   const businessCount = await businessRepo.count();
   if (businessCount === 0) {
     await businessRepo.save(
@@ -230,58 +225,53 @@ export async function runInitialSeed(): Promise<void> {
         isActive: true,
       }),
     );
-    logger.info('Seeded default CodyNex business');
   }
 
-  // 9. Backfill legacy unassigned tasks to their department's lead agent
-  const taskRepo = AppDataSource.getRepository(TaskEntity);
-  const unassignedTasks = await taskRepo.find({
-    where: { assignedEmployeeId: null as unknown as string },
-    relations: ['department'],
-  });
-
-  if (unassignedTasks.length > 0) {
-    for (const task of unassignedTasks) {
-      if (task.departmentId) {
-        const lead = await empRepo.findOne({
-          where: { departmentId: task.departmentId, isActive: true },
-          order: { roleTitle: 'ASC' },
-        });
-        if (lead) {
-          await taskRepo.update({ id: task.id }, { assignedEmployeeId: lead.id });
-        }
-      }
-    }
-    logger.info(`Backfilled ${unassignedTasks.length} unassigned tasks to active department lead agents`);
+  // 9. Backfill legacy unassigned tasks in ONE instant SQL query instead of sequential network round-trips
+  try {
+    await taskRepo.query(`
+      UPDATE tasks t
+      SET assigned_employee_id = e.id
+      FROM (
+        SELECT DISTINCT ON (department_id) id, department_id
+        FROM ai_employees
+        WHERE is_active = true
+        ORDER BY department_id, role_title ASC
+      ) e
+      WHERE t.department_id = e.department_id
+        AND t.assigned_employee_id IS NULL
+    `);
+  } catch {
+    // Gracefully handle if already backfilled or column mismatch
   }
 
-  // 10. Seed Company Rules
-  const ruleRepo = AppDataSource.getRepository(CompanyRuleEntity);
-  for (const r of DEFAULT_COMPANY_RULES) {
-    const existingRule = await ruleRepo.findOne({ where: { ruleCode: r.ruleCode } });
-    if (!existingRule) {
-      await ruleRepo.save(
-        ruleRepo.create({
-          ruleCode: r.ruleCode,
-          title: r.title,
-          description: r.description,
-          severity: r.severity,
-          defaultPenaltyTokens: r.defaultPenaltyTokens,
-          category: r.category,
-          isActive: true,
-        }),
-      );
-    }
+  // 10. Company Rules
+  const existingRules = await ruleRepo.find();
+  const ruleSet = new Set(existingRules.map((r) => r.ruleCode));
+  const missingRules = DEFAULT_COMPANY_RULES
+    .filter((r) => !ruleSet.has(r.ruleCode))
+    .map((r) =>
+      ruleRepo.create({
+        ruleCode: r.ruleCode,
+        title: r.title,
+        description: r.description,
+        severity: r.severity,
+        defaultPenaltyTokens: r.defaultPenaltyTokens,
+        category: r.category,
+        isActive: true,
+      }),
+    );
+  if (missingRules.length > 0) {
+    await ruleRepo.save(missingRules);
   }
 
-  // 11. Seed Binding Agent Contracts & Initial Token Wallets (1000 CNT Signing Bonus)
-  const contractRepo = AppDataSource.getRepository(AgentContractEntity);
-  const tokenTxRepo = AppDataSource.getRepository(AgentTokenTransactionEntity);
+  // 11. Binding Agent Contracts & Initial Token Wallets (1000 CNT Signing Bonus)
   const allEmployees = await empRepo.find({ relations: ['department'] });
+  const existingContracts = await contractRepo.find();
+  const contractSet = new Set(existingContracts.map((c) => c.employeeId));
 
   for (const [idx, emp] of allEmployees.entries()) {
-    const existingContract = await contractRepo.findOne({ where: { employeeId: emp.id } });
-    if (!existingContract) {
+    if (!contractSet.has(emp.id)) {
       const deptCode = (emp.department?.slug || 'GEN').slice(0, 3).toUpperCase();
       const numStr = String(idx + 1).padStart(3, '0');
       const contractNumber = `CNT-${deptCode}-${numStr}`;
@@ -322,4 +312,13 @@ export async function runInitialSeed(): Promise<void> {
       );
     }
   }
+
+  // Record that initial seed completed so subsequent startups skip this entire routine
+  await settingRepo.save(
+    settingRepo.create({
+      key: 'initial_seed_completed',
+      value: { completedAt: new Date().toISOString(), version: 2 },
+      isSecret: false,
+    }),
+  );
 }

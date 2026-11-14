@@ -6,11 +6,39 @@ import { ApiError } from '../utils/api-error.util';
 
 const execFileAsync = promisify(execFile);
 
+export type GitFileStatusCode = 'U' | 'A' | 'M' | 'D' | 'R' | 'C' | '?';
+
+export interface GitFileStatusItem {
+  path: string;
+  code: GitFileStatusCode;
+  rawCode: string;
+  staged: boolean;
+  unstaged: boolean;
+  oldPath?: string;
+}
+
+export interface WorkspaceGitState {
+  branch: string;
+  status: string;
+  diff: string;
+  fileStatuses: GitFileStatusItem[];
+  counts: {
+    added: number;
+    modified: number;
+    untracked: number;
+    deleted: number;
+    renamed: number;
+    conflict: number;
+    total: number;
+  };
+}
+
 export interface WorkspaceEntry {
   name: string;
   path: string;
   type: 'file' | 'dir';
   size?: number;
+  gitStatus?: GitFileStatusCode;
 }
 
 export interface BranchPushResult {
@@ -229,7 +257,22 @@ export class WorkspaceService {
     }
   }
 
-  async listTree(owner: string, name: string, subPath = ''): Promise<WorkspaceEntry[]> {
+  async getGitStatusMap(owner: string, name: string): Promise<Map<string, GitFileStatusCode>> {
+    const map = new Map<string, GitFileStatusCode>();
+    try {
+      const repoDir = this.getRepoDir(owner, name);
+      const { stdout } = await this.runGit(repoDir, ['status', '--porcelain=v1', '-uall']);
+      const { fileStatuses } = this.parseGitStatusPorcelain(stdout);
+      for (const item of fileStatuses) {
+        map.set(item.path.replace(/\\/g, '/'), item.code);
+      }
+    } catch {
+      // ignore
+    }
+    return map;
+  }
+
+  async listTree(owner: string, name: string, subPath = '', statusMap?: Map<string, GitFileStatusCode>): Promise<WorkspaceEntry[]> {
     const repoDir = this.getRepoDir(owner, name);
     const targetDir = this.resolveInsideRepo(repoDir, subPath);
 
@@ -239,6 +282,7 @@ export class WorkspaceService {
       return [];
     }
 
+    const effectiveStatusMap = statusMap || (await this.getGitStatusMap(owner, name));
     const entries = await fs.readdir(targetDir, { withFileTypes: true });
     const out: WorkspaceEntry[] = [];
     for (const entry of entries) {
@@ -246,11 +290,22 @@ export class WorkspaceService {
         continue;
       }
       const rel = subPath ? `${subPath.replace(/\/+$/, '')}/${entry.name}` : entry.name;
+      const normalizedPath = rel.replace(/\\/g, '/');
+
       if (entry.isDirectory()) {
-        out.push({ name: entry.name, path: rel, type: 'dir' });
+        // Check if any file under this directory has a git status
+        let dirStatus: GitFileStatusCode | undefined;
+        for (const [fPath, code] of effectiveStatusMap.entries()) {
+          if (fPath.startsWith(`${normalizedPath}/`)) {
+            dirStatus = code;
+            break;
+          }
+        }
+        out.push({ name: entry.name, path: rel, type: 'dir', gitStatus: dirStatus });
       } else if (entry.isFile()) {
         const stat = await fs.stat(path.join(targetDir, entry.name)).catch(() => null);
-        out.push({ name: entry.name, path: rel, type: 'file', size: stat?.size });
+        const fileStatus = effectiveStatusMap.get(normalizedPath);
+        out.push({ name: entry.name, path: rel, type: 'file', size: stat?.size, gitStatus: fileStatus });
       }
     }
 
@@ -265,6 +320,17 @@ export class WorkspaceService {
     const target = this.resolveInsideRepo(repoDir, relPath);
     const content = await fs.readFile(target, 'utf8');
     return content.slice(0, 100000);
+  }
+
+  async readOriginalFile(owner: string, name: string, relPath: string): Promise<string | null> {
+    const repoDir = this.getRepoDir(owner, name);
+    const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+    try {
+      const { stdout } = await this.runGit(repoDir, ['show', `HEAD:${normalized}`]);
+      return stdout.slice(0, 100000);
+    } catch {
+      return null;
+    }
   }
 
   async writeFiles(
@@ -340,25 +406,106 @@ export class WorkspaceService {
     }
   }
 
-  async getDiffAndStatus(owner: string, name: string): Promise<{
-    branch: string;
-    status: string;
-    diff: string;
-  }> {
+  parseGitStatusPorcelain(statusText: string): {
+    fileStatuses: GitFileStatusItem[];
+    counts: {
+      added: number;
+      modified: number;
+      untracked: number;
+      deleted: number;
+      renamed: number;
+      conflict: number;
+      total: number;
+    };
+  } {
+    const lines = statusText.split('\n').map((l) => l.trimEnd()).filter(Boolean);
+    const fileStatuses: GitFileStatusItem[] = [];
+    const counts = {
+      added: 0,
+      modified: 0,
+      untracked: 0,
+      deleted: 0,
+      renamed: 0,
+      conflict: 0,
+      total: 0,
+    };
+
+    for (const line of lines) {
+      if (line.length < 3) continue;
+      const rawCode = line.slice(0, 2);
+      const rest = line.slice(3).trim();
+      let code: GitFileStatusCode = 'M';
+      let oldPath: string | undefined;
+      let filePath = rest;
+
+      if (rest.includes(' -> ')) {
+        const parts = rest.split(' -> ');
+        oldPath = parts[0]?.trim();
+        filePath = parts[1]?.trim() || rest;
+      }
+
+      if (rawCode === '??') {
+        code = 'U';
+        counts.untracked++;
+      } else if (
+        rawCode.includes('U') ||
+        (rawCode[0] === 'A' && rawCode[1] === 'A') ||
+        (rawCode[0] === 'D' && rawCode[1] === 'D')
+      ) {
+        code = 'C';
+        counts.conflict++;
+      } else if (rawCode.includes('A')) {
+        code = 'A';
+        counts.added++;
+      } else if (rawCode.includes('D')) {
+        code = 'D';
+        counts.deleted++;
+      } else if (rawCode.includes('R')) {
+        code = 'R';
+        counts.renamed++;
+      } else {
+        code = 'M';
+        counts.modified++;
+      }
+
+      counts.total++;
+      fileStatuses.push({
+        path: filePath.replace(/\\/g, '/'),
+        code,
+        rawCode,
+        staged: rawCode[0] !== ' ' && rawCode[0] !== '?',
+        unstaged: rawCode[1] !== ' ' && rawCode[1] !== '?',
+        ...(oldPath ? { oldPath: oldPath.replace(/\\/g, '/') } : {}),
+      });
+    }
+
+    return { fileStatuses, counts };
+  }
+
+  async getDiffAndStatus(owner: string, name: string): Promise<WorkspaceGitState> {
     const repoDir = this.getRepoDir(owner, name);
     const exists = await this.existsLocally(owner, name);
     if (!exists) {
-      return { branch: 'not-cloned', status: '', diff: '' };
+      return {
+        branch: 'not-cloned',
+        status: '',
+        diff: '',
+        fileStatuses: [],
+        counts: { added: 0, modified: 0, untracked: 0, deleted: 0, renamed: 0, conflict: 0, total: 0 },
+      };
     }
     const [branchRes, statusRes, diffRes] = await Promise.all([
       this.runGit(repoDir, ['rev-parse', '--abbrev-ref', 'HEAD']),
-      this.runGit(repoDir, ['status', '--short']),
+      this.runGit(repoDir, ['status', '--porcelain=v1', '-uall']),
       this.runGit(repoDir, ['diff', '--no-color']),
     ]);
+    const { fileStatuses, counts } = this.parseGitStatusPorcelain(statusRes.stdout);
     return {
       branch: branchRes.stdout.trim(),
       status: statusRes.stdout.trim(),
       diff: diffRes.stdout.slice(0, 50000),
+      fileStatuses,
+      counts,
     };
   }
 

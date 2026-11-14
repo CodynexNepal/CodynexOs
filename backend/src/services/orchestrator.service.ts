@@ -522,6 +522,53 @@ export class OrchestratorService {
           if (validFiles.length === 0) {
             throw new Error('Code generation returned no valid source files; the task cannot be completed without a workspace change.');
           }
+
+          // Live Codex streaming broadcast: stream each file edit event over Socket.io
+          for (const file of validFiles) {
+            const cleanPath = file.path.trim().replace(/\\/g, '/');
+            const lines = file.content.split('\n');
+            const totalLines = lines.length;
+
+            socketServer.emit('file:edit:start', {
+              repoId,
+              repoName: targetRepo?.name || 'workspace',
+              repoOwner: targetRepo?.owner || 'organization',
+              branchName,
+              filePath: cleanPath,
+              status: 'A',
+              agentName: emp?.roleTitle || emp?.slug || 'AI Software Engineer',
+              agentRole: emp?.roleTitle || 'Full-Stack Developer',
+              taskId: task.id,
+              projectId: task.projectId,
+              totalLines,
+              timestamp: new Date().toISOString(),
+            });
+
+            // Stream chunks for Codex-style typewriter animation on clients
+            const chunkSize = Math.max(1, Math.ceil(totalLines / 8));
+            for (let li = 0; li < totalLines; li += chunkSize) {
+              const currentSlice = lines.slice(0, li + chunkSize).join('\n');
+              socketServer.emit('file:stream', {
+                repoId,
+                repoName: targetRepo?.name || 'workspace',
+                repoOwner: targetRepo?.owner || 'organization',
+                branchName,
+                filePath: cleanPath,
+                status: 'A',
+                chunk: lines.slice(li, li + chunkSize).join('\n'),
+                currentContent: currentSlice,
+                currentLine: Math.min(totalLines, li + chunkSize),
+                totalLines,
+                progress: Math.min(100, Math.round(((li + chunkSize) / totalLines) * 100)),
+                agentName: emp?.roleTitle || emp?.slug || 'AI Software Engineer',
+                agentRole: emp?.roleTitle || 'Full-Stack Developer',
+                taskId: task.id,
+                projectId: task.projectId,
+              });
+              await new Promise((r) => setTimeout(r, 35));
+            }
+          }
+
           const resWrite = await this.engineeringService.writeWorkspaceFiles(
             repoId,
             branchName,
@@ -529,6 +576,34 @@ export class OrchestratorService {
             task.project?.createdBy || this.workerId,
           );
           writtenFiles = resWrite.written;
+
+          for (const writtenPath of writtenFiles) {
+            const matchedFile = validFiles.find((vf) => vf.path.trim() === writtenPath.trim());
+            const content = matchedFile?.content || '';
+            const lines = content.split('\n');
+            socketServer.emit('file:edit:complete', {
+              repoId,
+              repoName: targetRepo?.name || 'workspace',
+              repoOwner: targetRepo?.owner || 'organization',
+              branchName,
+              filePath: writtenPath,
+              status: 'A',
+              content,
+              totalLines: lines.length,
+              size: content.length,
+              agentName: emp?.roleTitle || emp?.slug || 'AI Software Engineer',
+              taskId: task.id,
+              projectId: task.projectId,
+              timestamp: new Date().toISOString(),
+            });
+          }
+
+          socketServer.emit('workspace:status', {
+            repoId,
+            repoName: targetRepo?.name || 'workspace',
+            branchName,
+            files: writtenFiles,
+          });
         } else {
           throw new Error('Code generation returned no source files; the task cannot be completed without a workspace change.');
         }
@@ -1171,8 +1246,36 @@ export class OrchestratorService {
           status: TaskStatus.FAILED,
           leaseOwner: null,
           leaseExpiresAt: null,
+          outputPayload: {
+            error: msg,
+            status: 'FAILED',
+            failedAt: new Date().toISOString(),
+          },
         });
-        await this.taskRepo.appendLog(task.id, 'ERROR', `Task failed permanently: ${msg}`, {}, execution.id);
+        await this.taskRepo.appendLog(task.id, 'ERROR', `Task failed permanently: ${msg}`, { error: msg }, execution.id);
+
+        const failPayload = {
+          stepNumber: 0,
+          totalSteps: 4,
+          phase: 'FAILURE',
+          action: 'Task Execution Failed',
+          detail: msg,
+          error: msg,
+          employeeId: task.assignedEmployeeId,
+          employeeRole: task.assignedEmployee?.roleTitle || 'AI Agent',
+          employeeSlug: task.assignedEmployee?.slug || 'agent',
+          departmentSlug: task.department?.slug || 'engineering',
+          departmentName: task.department?.name || 'Engineering',
+          taskId: task.id,
+          taskTitle: task.title,
+          projectId: task.projectId,
+          status: TaskStatus.FAILED,
+          timestamp: new Date().toISOString(),
+        };
+
+        socketServer.emit('task:updated', { taskId: task.id, status: TaskStatus.FAILED, error: msg });
+        socketServer.emit('task:step', failPayload);
+        socketServer.emit('agent:activity', failPayload);
 
         if (this.hrService && task.assignedEmployeeId) {
           await this.hrService.handleTaskFailure(task.id, task.assignedEmployeeId, msg).catch(() => {});
@@ -1198,6 +1301,28 @@ export class OrchestratorService {
           leaseExpiresAt: null,
           nextRunAt: new Date(Date.now() + delaySec * 1000),
         });
+
+        const retryPayload = {
+          stepNumber: 0,
+          totalSteps: 4,
+          phase: 'RETRY',
+          action: `Retrying (Attempt ${nextRetry}/${task.maxRetries})`,
+          detail: `Encountered recoverable error: ${msg}. Backing off for ${delaySec}s`,
+          employeeId: task.assignedEmployeeId,
+          employeeRole: task.assignedEmployee?.roleTitle || 'AI Agent',
+          employeeSlug: task.assignedEmployee?.slug || 'agent',
+          departmentSlug: task.department?.slug || 'engineering',
+          departmentName: task.department?.name || 'Engineering',
+          taskId: task.id,
+          taskTitle: task.title,
+          projectId: task.projectId,
+          status: TaskStatus.QUEUED,
+          timestamp: new Date().toISOString(),
+        };
+
+        socketServer.emit('task:updated', { taskId: task.id, status: TaskStatus.QUEUED, retryCount: nextRetry });
+        socketServer.emit('agent:activity', retryPayload);
+
         await this.taskRepo.appendLog(
           task.id,
           'WARN',

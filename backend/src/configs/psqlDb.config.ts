@@ -39,7 +39,7 @@ const isTsNode =
 const isSslRequired =
   !databaseUrl.includes('127.0.0.1') &&
   !databaseUrl.includes('localhost') &&
-  (isProduction || databaseUrl.includes('sslmode=require') || databaseUrl.includes('neon.tech'));
+  (isProduction || databaseUrl.includes('sslmode=require') || databaseUrl.includes('sslmode=verify-full') || databaseUrl.includes('neon.tech'));
 
 export const psqlDbConfig: DataSourceOptions = {
   type: 'postgres',

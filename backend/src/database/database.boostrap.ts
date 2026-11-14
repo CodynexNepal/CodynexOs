@@ -1,26 +1,16 @@
 import { AppDataSource } from './database-source';
 import { logger } from '../utils/logger.util';
 
-function getTargetHost(): string {
-  try {
-    const raw = (AppDataSource.options as { url?: string }).url || '';
-    const parsed = new URL(raw);
-    return `${parsed.host}${parsed.pathname}`;
-  } catch {
-    return 'configured database';
-  }
-}
-
 export async function bootstrapDatabase(maxRetries = 5, retryDelayMs = 3000): Promise<void> {
   if (AppDataSource.isInitialized) return;
 
-  const targetHost = getTargetHost();
-
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      logger.info(`[Database] Connecting to Neon database at ${targetHost} (attempt ${attempt}/${maxRetries})...`);
+      if (attempt > 1) {
+        logger.info(`[Database] Connecting to PostgreSQL database (attempt ${attempt}/${maxRetries})...`);
+      }
       await AppDataSource.initialize();
-      logger.info(`PostgreSQL DataSource initialized successfully on ${targetHost}`);
+      logger.info('[Database] PostgreSQL connected successfully');
       return;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -29,11 +19,11 @@ export async function bootstrapDatabase(maxRetries = 5, retryDelayMs = 3000): Pr
 
       if (attempt < maxRetries && !isFatalAuthOrConfig) {
         logger.warn(
-          `PostgreSQL connection attempt ${attempt}/${maxRetries} failed (${msg || code || 'connection blip'}). Database may be resuming from cold start, retrying in ${retryDelayMs / 1000}s...`,
+          `[Database] Connection attempt ${attempt}/${maxRetries} failed (${msg || code || 'connection blip'}). Retrying in ${retryDelayMs / 1000}s...`,
         );
         await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
       } else {
-        logger.error(`PostgreSQL connection failed permanently after ${attempt} attempts`, {
+        logger.error(`[Database] Connection failed after ${attempt} attempts`, {
           error: msg,
           code,
         });
@@ -46,6 +36,6 @@ export async function bootstrapDatabase(maxRetries = 5, retryDelayMs = 3000): Pr
 export async function closeDatabase(): Promise<void> {
   if (AppDataSource.isInitialized) {
     await AppDataSource.destroy();
-    logger.info('PostgreSQL DataSource closed');
+    logger.info('[Database] PostgreSQL connection closed');
   }
 }

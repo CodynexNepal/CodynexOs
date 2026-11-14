@@ -26,25 +26,17 @@ const { PORT } = dotEnvConfig;
 
 (async () => {
   try {
-    logger.info('[Startup] Step 1/6: Connecting to PostgreSQL database...');
     await bootstrapDatabase();
-
-    logger.info('[Startup] Step 2/6: Running database migrations...');
     await AppDataSource.runMigrations();
-
-    logger.info('[Startup] Step 3/6: Running initial seeds...');
     await runInitialSeed();
 
-    logger.info('[Startup] Step 4/6: Initializing Express application...');
     const app = createApp();
     const httpServer = http.createServer(app);
     socketServer.init(httpServer);
 
-    logger.info('[Startup] Step 5/6: Bootstrapping autonomous agent workers...');
     const { orchestratorService } = getOsContainer();
     bootstrapWorkers(orchestratorService);
 
-    logger.info(`[Startup] Step 6/6: Starting HTTP server on port ${PORT}...`);
     httpServer.listen(PORT, () => {
       logger.info('CodyNex OS Backend listening', { port: PORT, env: dotEnvConfig.NODE_ENV });
     });

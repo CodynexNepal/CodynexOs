@@ -223,3 +223,72 @@ export interface EmailAccountItem {
   createdAt: string;
   updatedAt: string;
 }
+
+export type GitFileStatusCode = "U" | "A" | "M" | "D" | "R" | "C" | "?";
+
+export interface GitFileStatusItem {
+  path: string;
+  code: GitFileStatusCode;
+  rawCode: string;
+  staged: boolean;
+  unstaged: boolean;
+  oldPath?: string;
+}
+
+export interface WorkspaceGitState {
+  branch: string;
+  status: string;
+  diff: string;
+  fileStatuses: GitFileStatusItem[];
+  counts: {
+    added: number;
+    modified: number;
+    untracked: number;
+    deleted: number;
+    renamed: number;
+    conflict: number;
+    total: number;
+  };
+}
+
+export interface WorkspaceFileEntry {
+  name: string;
+  path: string;
+  type: "file" | "dir";
+  size?: number;
+  gitStatus?: GitFileStatusCode;
+}
+
+export interface FileStreamEvent {
+  repoId: string;
+  repoName: string;
+  repoOwner: string;
+  branchName: string;
+  filePath: string;
+  status: GitFileStatusCode;
+  chunk?: string;
+  currentContent?: string;
+  currentLine?: number;
+  totalLines?: number;
+  progress?: number;
+  agentName?: string;
+  agentRole?: string;
+  taskId?: string;
+  projectId?: string;
+}
+
+export interface FileEditCompleteEvent {
+  repoId: string;
+  repoName: string;
+  repoOwner: string;
+  branchName: string;
+  filePath: string;
+  status: GitFileStatusCode;
+  content: string;
+  totalLines: number;
+  size: number;
+  agentName?: string;
+  taskId?: string;
+  projectId?: string;
+  timestamp: string;
+}

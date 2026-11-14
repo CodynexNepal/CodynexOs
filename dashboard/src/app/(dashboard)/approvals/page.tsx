@@ -1,5 +1,1 @@
-import { redirect } from "next/navigation";
-
-export default function ApprovalsRedirectPage() {
-  redirect("/deployments");
-}
+export { default } from "../deployments/page";

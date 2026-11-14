@@ -76,9 +76,15 @@ function cleanDatabaseUrl(raw?: string): string {
   try {
     const parsed = new URL(trimmed);
     parsed.searchParams.delete('channel_binding');
+    if (parsed.searchParams.get('sslmode') === 'require') {
+      parsed.searchParams.set('sslmode', 'verify-full');
+    }
     return parsed.toString();
   } catch {
-    return trimmed.replace(/([?&])channel_binding=[^&]+(&|$)/, '$1').replace(/[?&]$/, '');
+    return trimmed
+      .replace(/([?&])channel_binding=[^&]+(&|$)/, '$1')
+      .replace(/([?&])sslmode=require(&|$)/, '$1sslmode=verify-full$2')
+      .replace(/[?&]$/, '');
   }
 }
 

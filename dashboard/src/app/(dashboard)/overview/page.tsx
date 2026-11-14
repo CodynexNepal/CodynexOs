@@ -54,11 +54,7 @@ export default function OverviewPage() {
         </div>
 
         {loading && !data ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-28 w-full" />
-            ))}
-          </div>
+          <OverviewSkeleton />
         ) : (
           data && (
             <>
@@ -179,4 +175,86 @@ function StatBox({
     </Card>
   );
   return href ? <Link href={href}>{inner}</Link> : inner;
+}
+
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* 8 Stat Boxes */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="rounded-lg border border-surface-border bg-surface p-4 shadow-card">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="mt-3 h-8 w-24" />
+            <Skeleton className="mt-2 h-3 w-36" />
+          </div>
+        ))}
+      </div>
+
+      {/* Live Flow Visualizer Skeleton */}
+      <div className="overflow-hidden rounded-lg border border-surface-border bg-surface p-5 shadow-card">
+        <div className="flex items-center justify-between pb-4 border-b border-surface-border">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-8 w-8 rounded-md" />
+            <div className="space-y-1.5">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-3 w-64" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-24 rounded-md" />
+            <Skeleton className="h-8 w-24 rounded-md" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-5">
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <div key={idx} className="rounded-lg border border-surface-border bg-surface-muted/40 p-3 space-y-2">
+              <Skeleton className="h-6 w-6 rounded-full" />
+              <Skeleton className="h-3.5 w-20" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Department Performance and Activity Skeleton */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-lg border border-surface-border bg-surface p-5 shadow-card space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-surface-border">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-20" />
+          </div>
+          <div className="divide-y divide-surface-border">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex justify-between items-center py-3">
+                <div className="space-y-1.5">
+                  <Skeleton className="h-3.5 w-32" />
+                  <Skeleton className="h-2.5 w-20" />
+                </div>
+                <Skeleton className="h-6 w-16 rounded-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-surface-border bg-surface p-5 shadow-card space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-surface-border">
+            <Skeleton className="h-4 w-36" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+          <div className="divide-y divide-surface-border">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex justify-between items-center py-3">
+                <div className="space-y-1.5">
+                  <Skeleton className="h-3.5 w-40" />
+                  <Skeleton className="h-2.5 w-24" />
+                </div>
+                <Skeleton className="h-5 w-20 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }

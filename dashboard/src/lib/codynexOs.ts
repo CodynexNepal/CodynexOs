@@ -50,8 +50,8 @@ export const codynexApi = {
   },
   projects: () => api.get<{ success: boolean; data: ProjectItem[] }>("/projects"),
   agents: {
-    liveActivity: () =>
-      api.get<{ success: boolean; data: AgentLiveActivityResponse }>("/agents/live-activity"),
+    liveActivity: (params?: { projectId?: string }) =>
+      api.get<{ success: boolean; data: AgentLiveActivityResponse }>("/agents/live-activity", { params }),
   },
   tasks: {
     list: (params?: { projectId?: string; status?: string }) =>

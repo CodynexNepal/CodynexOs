@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/Button";
 import { useDomainSocket } from "@/hooks/useDomainSocket";
 import { codynexApi, unwrap } from "@/lib/codynexOs";
 import { cn, formatDateTime } from "@/lib/utils";
+import { LiveCodexFileEditor } from "@/components/domain/LiveCodexFileEditor";
 import type {
   AgentActivityEvent,
   AgentLiveActivityResponse,
@@ -35,7 +36,7 @@ interface LiveCompanyFlowVisualizerProps {
   className?: string;
 }
 
-type TabMode = "FLOW" | "PARALLEL_AGENTS" | "STEP_FEED";
+type TabMode = "FLOW" | "PARALLEL_AGENTS" | "LIVE_CODEX" | "STEP_FEED";
 
 interface PipelineStage {
   id: string;
@@ -122,14 +123,23 @@ export function LiveCompanyFlowVisualizer({
   const fetchLiveActivity = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await codynexApi.agents.liveActivity();
+      const res = await codynexApi.agents.liveActivity(projectId ? { projectId } : undefined);
       const payload = unwrap<AgentLiveActivityResponse>(res.data);
-      const tasksFiltered = projectId
-        ? (payload.runningTasks ?? []).filter((t) => t.projectId === projectId)
-        : payload.runningTasks ?? [];
-      const recentFiltered = projectId
-        ? (payload.recentTasks ?? []).filter((t) => t.projectId === projectId)
-        : payload.recentTasks ?? [];
+      let tasksFiltered = payload.runningTasks ?? [];
+      let recentFiltered = payload.recentTasks ?? [];
+
+      if (projectId) {
+        try {
+          const pTasksRes = await codynexApi.tasks.list({ projectId });
+          const pTasks = unwrap<TaskItem[]>(pTasksRes.data) ?? [];
+          if (pTasks.length > 0) {
+            recentFiltered = pTasks;
+            tasksFiltered = pTasks.filter((t) => t.status === "RUNNING");
+          }
+        } catch {
+          // ignore
+        }
+      }
 
       setRunningTasks(tasksFiltered);
       setRecentTasks(recentFiltered);
@@ -146,7 +156,7 @@ export function LiveCompanyFlowVisualizer({
     void fetchLiveActivity();
     const pollInterval = window.setInterval(() => {
       void fetchLiveActivity();
-    }, 10_000);
+    }, 5_000);
 
     return () => window.clearInterval(pollInterval);
   }, [fetchLiveActivity]);
@@ -187,7 +197,7 @@ export function LiveCompanyFlowVisualizer({
 
   // Determine stage status across the pipeline
   const stageStatus = useMemo(() => {
-    const statuses: Record<string, "PENDING" | "RUNNING" | "COMPLETED"> = {
+    const statuses: Record<string, "PENDING" | "RUNNING" | "COMPLETED" | "FAILED"> = {
       ceo: "COMPLETED",
       coo: "COMPLETED",
       cto: "PENDING",
@@ -200,9 +210,11 @@ export function LiveCompanyFlowVisualizer({
 
     // Check CTO
     const ctoTasks = allTasks.filter((t) => t.taskType === "architecture");
-    if (ctoTasks.some((t) => t.status === "RUNNING")) {
+    if (ctoTasks.some((t) => t.status === "FAILED")) {
+      statuses.cto = "FAILED";
+    } else if (ctoTasks.some((t) => t.status === "RUNNING")) {
       statuses.cto = "RUNNING";
-    } else if (ctoTasks.some((t) => t.status === "COMPLETED")) {
+    } else if (ctoTasks.length > 0 && ctoTasks.every((t) => t.status === "COMPLETED")) {
       statuses.cto = "COMPLETED";
     }
 
@@ -210,7 +222,9 @@ export function LiveCompanyFlowVisualizer({
     const engTasks = allTasks.filter((t) =>
       ["ui_ux_design", "code", "code_generate", "repo_provision"].includes(t.taskType)
     );
-    if (engTasks.some((t) => t.status === "RUNNING")) {
+    if (engTasks.some((t) => t.status === "FAILED")) {
+      statuses.parallel_engineering = "FAILED";
+    } else if (engTasks.some((t) => t.status === "RUNNING")) {
       statuses.parallel_engineering = "RUNNING";
     } else if (engTasks.length > 0 && engTasks.every((t) => t.status === "COMPLETED")) {
       statuses.parallel_engineering = "COMPLETED";
@@ -218,7 +232,9 @@ export function LiveCompanyFlowVisualizer({
 
     // Check QA
     const qaTasks = allTasks.filter((t) => t.taskType === "qa_verify");
-    if (qaTasks.some((t) => t.status === "RUNNING")) {
+    if (qaTasks.some((t) => t.status === "FAILED")) {
+      statuses.qa = "FAILED";
+    } else if (qaTasks.some((t) => t.status === "RUNNING")) {
       statuses.qa = "RUNNING";
     } else if (qaTasks.length > 0 && qaTasks.every((t) => t.status === "COMPLETED")) {
       statuses.qa = "COMPLETED";
@@ -228,7 +244,9 @@ export function LiveCompanyFlowVisualizer({
     const devopsTasks = allTasks.filter((t) =>
       ["devops_deploy", "github_push_pr"].includes(t.taskType)
     );
-    if (devopsTasks.some((t) => t.status === "RUNNING")) {
+    if (devopsTasks.some((t) => t.status === "FAILED")) {
+      statuses.devops = "FAILED";
+    } else if (devopsTasks.some((t) => t.status === "RUNNING")) {
       statuses.devops = "RUNNING";
     } else if (devopsTasks.length > 0 && devopsTasks.every((t) => t.status === "COMPLETED")) {
       statuses.devops = "COMPLETED";
@@ -239,36 +257,52 @@ export function LiveCompanyFlowVisualizer({
 
   // Combine live WebSocket events with recent task logs for full step-by-step audit
   const combinedStepFeed = useMemo(() => {
-    const fromEvents = liveEvents.map((evt) => ({
-      id: `evt-${evt.taskId}-${evt.stepNumber}-${evt.timestamp}`,
-      timestamp: evt.timestamp,
-      phase: evt.phase,
-      action: evt.action,
-      detail: evt.detail,
-      stepNumber: evt.stepNumber,
-      totalSteps: evt.totalSteps,
-      employeeRole: evt.employeeRole ?? "AI Agent",
-      departmentName: evt.departmentName ?? "Engineering",
-      taskTitle: evt.taskTitle,
-      taskId: evt.taskId,
-    }));
+    const fromEvents = liveEvents.map((evt) => {
+      const isError = evt.phase === "FAILURE" || Boolean(evt.error);
+      return {
+        id: `evt-${evt.taskId}-${evt.stepNumber}-${evt.timestamp}`,
+        timestamp: evt.timestamp,
+        phase: evt.phase,
+        action: evt.action,
+        detail: evt.detail,
+        stepNumber: evt.stepNumber,
+        totalSteps: evt.totalSteps,
+        employeeRole: evt.employeeRole ?? "AI Agent",
+        departmentName: evt.departmentName ?? "Engineering",
+        taskTitle: evt.taskTitle,
+        taskId: evt.taskId,
+        isError,
+      };
+    });
 
     const fromLogs = recentLogs
-      .filter((l) => l.metadata && (l.metadata.stepNumber || l.message?.includes("Step ")))
+      .filter((l) => {
+        const meta = (l.metadata as Record<string, unknown>) || {};
+        return (
+          l.level === "ERROR" ||
+          Boolean(meta.error) ||
+          Boolean(meta.stepNumber) ||
+          l.message?.includes("Step ")
+        );
+      })
       .map((l) => {
-        const meta = l.metadata as Record<string, unknown>;
+        const meta = (l.metadata as Record<string, unknown>) ?? {};
+        const isError = l.level === "ERROR" || Boolean(meta.error);
         return {
           id: `log-${l.id}`,
           timestamp: l.createdAt,
-          phase: String(meta.phase || "EXECUTION"),
-          action: String(meta.action || l.message.split(" - ")[1]?.split(":")[0] || "Step Progress"),
-          detail: String(meta.detail || l.message),
-          stepNumber: Number(meta.stepNumber || 1),
+          phase: isError ? "FAILURE" : String(meta.phase || "EXECUTION"),
+          action: isError
+            ? "Task Execution Failed"
+            : String(meta.action || l.message.split(" - ")[1]?.split(":")[0] || "Step Progress"),
+          detail: isError ? String(meta.error || l.message) : String(meta.detail || l.message),
+          stepNumber: Number(meta.stepNumber || (isError ? 0 : 1)),
           totalSteps: Number(meta.totalSteps || 4),
           employeeRole: String(meta.employeeRole || "AI Agent"),
           departmentName: String(meta.departmentName || "Engineering"),
           taskTitle: String(meta.taskTitle || "Task Execution"),
           taskId: l.taskId,
+          isError,
         };
       });
 
@@ -363,6 +397,27 @@ export function LiveCompanyFlowVisualizer({
             </button>
             <button
               aria-controls="workforce-view"
+              aria-selected={tab === "LIVE_CODEX"}
+              id="workforce-tab-codex"
+              role="tab"
+              type="button"
+              onClick={() => setTab("LIVE_CODEX")}
+              className={cn(
+                "flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-semibold transition-colors",
+                tab === "LIVE_CODEX"
+                  ? "bg-brand text-brand-ink"
+                  : "text-ink-muted hover:text-ink"
+              )}
+            >
+              <Code2 className="h-3.5 w-3.5" />
+              Live Codex Stream
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+              </span>
+            </button>
+            <button
+              aria-controls="workforce-view"
               aria-selected={tab === "STEP_FEED"}
               id="workforce-tab-feed"
               role="tab"
@@ -428,17 +483,20 @@ export function LiveCompanyFlowVisualizer({
                 const status = stageStatus[stage.id] ?? "PENDING";
                 const isRunning = status === "RUNNING";
                 const isCompleted = status === "COMPLETED";
+                const isFailed = status === "FAILED";
 
                 return (
                   <div
                     key={stage.id}
                     className={cn(
                       "relative rounded-lg border p-3.5 transition-all",
-                      isRunning
-                        ? "border-[#9FE870] bg-[#F5FEE8] shadow-sm dark:border-[#2F5D14] dark:bg-[#13220B]"
-                        : isCompleted
-                          ? "border-surface-border bg-surface"
-                          : "border-surface-border bg-surface-muted/40 opacity-70"
+                      isFailed
+                        ? "border-rose-300 bg-rose-50/70 shadow-sm dark:border-rose-900/60 dark:bg-rose-950/20"
+                        : isRunning
+                          ? "border-[#9FE870] bg-[#F5FEE8] shadow-sm dark:border-[#2F5D14] dark:bg-[#13220B]"
+                          : isCompleted
+                            ? "border-surface-border bg-surface"
+                            : "border-surface-border bg-surface-muted/40 opacity-70"
                     )}
                   >
                     {/* Connecting Chevron on Desktop */}
@@ -452,21 +510,23 @@ export function LiveCompanyFlowVisualizer({
                       <span
                         className={cn(
                           "flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold",
-                          isRunning
-                            ? "bg-[#9FE870] text-[#0E0F0C]"
-                            : isCompleted
-                              ? "bg-surface-muted text-ink"
-                              : "bg-surface text-ink-muted"
+                          isFailed
+                            ? "bg-rose-200 text-rose-900 dark:bg-rose-900 dark:text-rose-100"
+                            : isRunning
+                              ? "bg-[#9FE870] text-[#0E0F0C]"
+                              : isCompleted
+                                ? "bg-surface-muted text-ink"
+                                : "bg-surface text-ink-muted"
                         )}
                       >
                         <IconComponent className="h-3.5 w-3.5" />
                       </span>
                       <Badge
                         tone={
-                          isRunning ? "green" : isCompleted ? "blue" : "gray"
+                          isFailed ? "red" : isRunning ? "green" : isCompleted ? "blue" : "gray"
                         }
                       >
-                        {isRunning ? "Active Now" : isCompleted ? "Passed" : "Queued"}
+                        {isFailed ? "Failed" : isRunning ? "Active Now" : isCompleted ? "Passed" : "Queued"}
                       </Badge>
                     </div>
 
@@ -726,23 +786,45 @@ export function LiveCompanyFlowVisualizer({
               </div>
             ) : (
               <div className="divide-y divide-surface-border rounded-lg border border-surface-border bg-surface">
-                {combinedStepFeed.slice(0, 25).map((step) => (
-                  <div key={step.id} className="p-3.5 hover:bg-surface-muted/40 transition-colors">
+                {combinedStepFeed.slice(0, 30).map((step) => (
+                  <div
+                    key={step.id}
+                    className={cn(
+                      "p-3.5 transition-colors",
+                      step.isError
+                        ? "border-l-4 border-rose-500 bg-rose-50/60 dark:bg-rose-950/20"
+                        : "hover:bg-surface-muted/40"
+                    )}
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="flex h-5 w-5 items-center justify-center rounded bg-surface-muted text-[10px] font-bold text-ink">
-                          {step.stepNumber}
+                        <span
+                          className={cn(
+                            "flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold",
+                            step.isError
+                              ? "bg-rose-200 text-rose-900 dark:bg-rose-900 dark:text-rose-100"
+                              : "bg-surface-muted text-ink"
+                          )}
+                        >
+                          {step.stepNumber === 0 ? "!" : step.stepNumber}
                         </span>
                         <h6 className="text-xs font-bold text-ink">{step.action}</h6>
-                        <Badge tone="blue">{step.employeeRole}</Badge>
-                        <Badge tone="gray">{step.phase}</Badge>
+                        <Badge tone={step.isError ? "red" : "blue"}>{step.employeeRole}</Badge>
+                        <Badge tone={step.isError ? "red" : "gray"}>{step.phase}</Badge>
                       </div>
                       <span className="text-[10px] tabular-nums text-ink-muted">
                         {formatDateTime(step.timestamp)}
                       </span>
                     </div>
 
-                    <p className="mt-1.5 pl-7 text-xs text-ink-muted leading-relaxed font-mono">
+                    <p
+                      className={cn(
+                        "mt-1.5 pl-7 text-xs leading-relaxed font-mono",
+                        step.isError
+                          ? "font-semibold text-rose-900 dark:text-rose-200"
+                          : "text-ink-muted"
+                      )}
+                    >
                       &gt; {step.detail}
                     </p>
 
@@ -755,6 +837,13 @@ export function LiveCompanyFlowVisualizer({
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB 4: LIVE CODEX STREAM & FILE STATUSES */}
+        {tab === "LIVE_CODEX" && (
+          <div className="space-y-4">
+            <LiveCodexFileEditor projectId={projectId} />
           </div>
         )}
       </div>

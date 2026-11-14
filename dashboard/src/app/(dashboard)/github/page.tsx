@@ -27,6 +27,7 @@ import {
   Trash2,
   UploadCloud,
   XCircle,
+  Zap,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -39,7 +40,8 @@ import { useApiQuery } from "@/hooks/useApi";
 import { codynexApi, unwrap } from "@/lib/codynexOs";
 import { repoSchema } from "@/schemas/forms.schema";
 import { toApiError } from "@/lib/axios";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
+import { LiveCodexFileEditor } from "@/components/domain/LiveCodexFileEditor";
 
 interface RepoItem {
   id: string;
@@ -52,8 +54,14 @@ interface RepoItem {
 
 interface WorkspaceState {
   cloned: boolean;
-  entries: Array<{ name: string; path: string; type: "file" | "dir"; size?: number }>;
-  gitState: { branch: string; status: string; diff: string };
+  entries: Array<{ name: string; path: string; type: "file" | "dir"; size?: number; gitStatus?: string }>;
+  gitState: {
+    branch: string;
+    status: string;
+    diff: string;
+    fileStatuses?: Array<{ path: string; code: string }>;
+    counts?: { added: number; modified: number; untracked: number; deleted: number; total: number };
+  };
 }
 
 interface RepositoryDiagnostic {
@@ -118,6 +126,30 @@ export default function GithubPage() {
     verdict: string;
     checks: Array<{ name: string; status: string; output: string }>;
   } | null>(null);
+
+  const [editorTab, setEditorTab] = useState<"CODEX" | "MANUAL">("CODEX");
+
+  const renderGitStatusBadge = (code?: string) => {
+    if (!code) return null;
+    const tone =
+      code === "A"
+        ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+        : code === "M"
+        ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
+        : code === "U" || code === "?"
+        ? "bg-sky-500/20 text-sky-400 border-sky-500/40"
+        : code === "D"
+        ? "bg-rose-500/20 text-rose-400 border-rose-500/40"
+        : "bg-purple-500/20 text-purple-400 border-purple-500/40";
+    return (
+      <span
+        title={`Git status: ${code}`}
+        className={`inline-flex items-center justify-center rounded px-1.5 py-0.5 font-mono text-[10px] font-bold border ${tone}`}
+      >
+        {code}
+      </span>
+    );
+  };
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [probeResult, setProbeResult] = useState<GithubDiagnosticState | null>(null);
@@ -884,16 +916,19 @@ export default function GithubPage() {
                             ? loadWorkspace(activeRepo, entry.path)
                             : handleOpenFile(entry.path)
                         }
-                        className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-muted ${
+                        className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-muted ${
                           selectedFile?.path === entry.path ? "bg-brand/30 font-semibold" : ""
                         }`}
                       >
-                        {entry.type === "dir" ? (
-                          <Folder className="h-3.5 w-3.5 shrink-0 text-amber-700" />
-                        ) : (
-                          <FileCode2 className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
-                        )}
-                        <span className="truncate text-ink">{entry.name}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          {entry.type === "dir" ? (
+                            <Folder className="h-3.5 w-3.5 shrink-0 text-amber-700" />
+                          ) : (
+                            <FileCode2 className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
+                          )}
+                          <span className="truncate text-ink">{entry.name}</span>
+                        </div>
+                        {entry.gitStatus && renderGitStatusBadge(entry.gitStatus)}
                       </button>
                     ))}
                   </div>
@@ -923,7 +958,65 @@ export default function GithubPage() {
                 </div>
 
                 <div className="space-y-4 p-4 lg:col-span-2">
-                  {selectedFile ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border pb-3">
+                    <div className="flex rounded-md border border-surface-border bg-surface-muted p-0.5 text-xs font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => setEditorTab("CODEX")}
+                        className={cn(
+                          "flex items-center gap-1.5 rounded px-3 py-1 transition-colors",
+                          editorTab === "CODEX"
+                            ? "bg-brand text-brand-ink"
+                            : "text-ink-muted hover:text-ink"
+                        )}
+                      >
+                        <Zap className="h-3.5 w-3.5" />
+                        Codex Live Stream &amp; Diffs
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditorTab("MANUAL")}
+                        className={cn(
+                          "flex items-center gap-1.5 rounded px-3 py-1 transition-colors",
+                          editorTab === "MANUAL"
+                            ? "bg-brand text-brand-ink"
+                            : "text-ink-muted hover:text-ink"
+                        )}
+                      >
+                        <FileCode2 className="h-3.5 w-3.5" />
+                        Manual File Editor
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs">
+                      {workspace.gitState.counts && (
+                        <div className="flex items-center gap-1 text-[11px]">
+                          {workspace.gitState.counts.added > 0 && (
+                            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 font-bold font-mono text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                              +{workspace.gitState.counts.added} A
+                            </span>
+                          )}
+                          {workspace.gitState.counts.modified > 0 && (
+                            <span className="rounded bg-amber-500/20 px-1.5 py-0.5 font-bold font-mono text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                              ~{workspace.gitState.counts.modified} M
+                            </span>
+                          )}
+                          {workspace.gitState.counts.untracked > 0 && (
+                            <span className="rounded bg-sky-500/20 px-1.5 py-0.5 font-bold font-mono text-sky-700 dark:text-sky-400 border border-sky-500/30">
+                              ?{workspace.gitState.counts.untracked} U
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {editorTab === "CODEX" ? (
+                    <LiveCodexFileEditor
+                      repoId={activeRepo.id}
+                      initialFilePath={selectedFile?.path}
+                    />
+                  ) : selectedFile ? (
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-mono text-xs font-bold text-ink">
