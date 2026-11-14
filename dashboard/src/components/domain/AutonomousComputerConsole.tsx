@@ -3,8 +3,11 @@
 import { useEffect, useState } from "react";
 import {
   Activity,
+  Check,
   Code2,
+  Copy,
   Cpu,
+  FileCode2,
   Globe,
   Pause,
   Play,
@@ -37,6 +40,121 @@ interface AgentStepLog {
   output?: unknown;
   status: "EXECUTING" | "SUCCESS" | "FAILED";
   timestamp: string;
+}
+
+function highlightVsCodeSyntax(line: string) {
+  if (/^\s*\/\//.test(line)) {
+    return <span className="text-[#6a9955] italic">{line}</span>;
+  }
+
+  const tokens: React.ReactNode[] = [];
+  const regex = /("[^"]*"|'[^']*'|`[^`]*`|\b(?:import|export|from|const|let|var|function|return|interface|type|class|if|else|switch|case|default|async|await|extends|implements|new|typeof|void|as)\b|\b(?:React|FC|useState|useCallback|useEffect|useMemo|useRef|string|number|boolean|any|Record|Array|Promise|HTMLElement|MouseEvent)\b|<\/?[a-zA-Z0-9_-]+|\b\d+\b|\b(?:className|onClick|onKeyDown|role|aria-label|tabIndex|viewBox|stroke|strokeWidth|fill|strokeLinecap)\b|[^"'\s\w<>]+|\s+|\w+)/g;
+
+  let match;
+  let idx = 0;
+  while ((match = regex.exec(line)) !== null) {
+    const text = match[0];
+    const key = `${idx++}-${text}`;
+
+    if (/^["'`]/.test(text)) {
+      tokens.push(<span key={key} className="text-[#ce9178]">{text}</span>);
+    } else if (/^(import|export|from|const|let|var|function|return|interface|type|class|if|else|switch|case|default|async|await|extends|implements|new|typeof|void|as)$/.test(text)) {
+      tokens.push(<span key={key} className="text-[#569cd6] font-semibold">{text}</span>);
+    } else if (/^(React|FC|useState|useCallback|useEffect|useMemo|useRef|string|number|boolean|any|Record|Array|Promise|HTMLElement|MouseEvent)$/.test(text)) {
+      tokens.push(<span key={key} className="text-[#4ec9b0]">{text}</span>);
+    } else if (/^<\/?[a-zA-Z0-9_-]+/.test(text)) {
+      tokens.push(<span key={key} className="text-[#4fc1ff]">{text}</span>);
+    } else if (/^\d+$/.test(text)) {
+      tokens.push(<span key={key} className="text-[#b5cea8]">{text}</span>);
+    } else if (/^(className|onClick|onKeyDown|role|aria-label|tabIndex|viewBox|stroke|strokeWidth|fill|strokeLinecap)$/.test(text)) {
+      tokens.push(<span key={key} className="text-[#9cdcfe]">{text}</span>);
+    } else {
+      tokens.push(<span key={key} className="text-[#d4d4d4]">{text}</span>);
+    }
+  }
+
+  return tokens.length > 0 ? tokens : line;
+}
+
+function VsCodeSnippetViewer({ filePath, content }: { filePath: string; content: string }) {
+  const [copied, setCopied] = useState(false);
+  const lines = (content || "").split("\n");
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="my-2 rounded-lg border border-[#3c3c3c] bg-[#1e1e1e] shadow-xl overflow-hidden font-mono text-xs">
+      {/* VS Code Tab Header */}
+      <div className="flex items-center justify-between border-b border-[#2d2d2d] bg-[#252526] px-3 py-1.5 text-[11px]">
+        <div className="flex items-center gap-2 min-w-0">
+          <FileCode2 className="h-3.5 w-3.5 text-[#388bfd] shrink-0" />
+          <span className="font-semibold text-[#cccccc] truncate">{filePath}</span>
+          <span className="rounded bg-[#333333] px-1.5 py-0.5 text-[10px] text-[#858585] shrink-0">
+            {lines.length} lines
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1 rounded bg-[#333333] hover:bg-[#444444] px-2 py-0.5 text-[10px] text-[#cccccc] transition-colors shrink-0"
+        >
+          {copied ? <Check className="h-3 w-3 text-[#7ee787]" /> : <Copy className="h-3 w-3" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+
+      {/* Editor Body */}
+      <div className="max-h-[360px] overflow-auto p-2.5 selection:bg-[#264f78] leading-relaxed">
+        <table className="w-full border-collapse">
+          <tbody>
+            {lines.map((l, i) => (
+              <tr key={i} className="hover:bg-[#2a2d2e]/80">
+                <td className="w-9 select-none pr-3 text-right text-[10px] text-[#858585] align-top">
+                  {i + 1}
+                </td>
+                <td className="whitespace-pre overflow-x-auto text-[11px] text-[#d4d4d4]">
+                  {highlightVsCodeSyntax(l)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StructuredToolOutput({ output }: { output: unknown }) {
+  if (output === undefined || output === null) return null;
+
+  let parsedObj: { path?: string; content?: string } | null = null;
+  if (typeof output === "object" && output !== null) {
+    parsedObj = output as { path?: string; content?: string };
+  } else if (typeof output === "string") {
+    const trimmed = output.trim();
+    if (trimmed.startsWith("{") && trimmed.includes('"content"') && trimmed.includes('"path"')) {
+      try {
+        parsedObj = JSON.parse(trimmed);
+      } catch {
+        // fallback
+      }
+    }
+  }
+
+  if (parsedObj && typeof parsedObj.path === "string" && typeof parsedObj.content === "string") {
+    return <VsCodeSnippetViewer filePath={parsedObj.path} content={parsedObj.content} />;
+  }
+
+  return (
+    <div className="rounded bg-[#0d1117] p-2 text-[10px] text-[#8b949e] overflow-x-auto">
+      <span className="text-white font-bold">Result: </span>
+      {typeof output === "string" ? output : JSON.stringify(output, null, 2)}
+    </div>
+  );
 }
 
 interface RepoOption {
@@ -554,12 +672,7 @@ export function AutonomousComputerConsole({
                     )}
 
                     {log.output !== undefined && (
-                      <div className="rounded bg-[#0d1117] p-2 text-[10px] text-[#8b949e] overflow-x-auto">
-                        <span className="text-white font-bold">Result: </span>
-                        {typeof log.output === "string"
-                          ? log.output
-                          : JSON.stringify(log.output, null, 2)}
-                      </div>
+                      <StructuredToolOutput output={log.output} />
                     )}
                   </div>
                 ))
@@ -612,9 +725,7 @@ export function AutonomousComputerConsole({
                 </div>
                 {log.thought && <p className="text-white">{log.thought}</p>}
                 {log.output !== undefined && log.output !== null && (
-                  <pre className="mt-1 rounded bg-[#0d1117] p-2 text-[11px] text-[#7ee787] overflow-x-auto whitespace-pre-wrap">
-                    {typeof log.output === "string" ? log.output : JSON.stringify(log.output, null, 2)}
-                  </pre>
+                  <StructuredToolOutput output={log.output} />
                 )}
               </div>
             ))}

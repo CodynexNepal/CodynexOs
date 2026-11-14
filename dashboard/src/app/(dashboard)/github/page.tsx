@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CornerDownLeft,
+  Cpu,
   Download,
   FileCode2,
   Folder,
@@ -16,7 +17,6 @@ import {
   GitCommit,
   GitPullRequest,
   Key,
-  MonitorPlay,
   Package,
   Play,
   Plus,
@@ -851,11 +851,11 @@ export default function GithubPage() {
                         Run Tests
                       </Button>
                       <Link
-                        href={`/frontend-preview`}
+                        href="/workspace"
                         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-brand bg-brand/15 text-brand-ink px-3 text-[13px] font-bold hover:bg-brand/25 transition-colors"
                       >
-                        <MonitorPlay className="h-3.5 w-3.5" />
-                        Live Preview
+                        <Cpu className="h-3.5 w-3.5" />
+                        Autonomous Workspace
                       </Link>
                       <Button
                         variant="dark"

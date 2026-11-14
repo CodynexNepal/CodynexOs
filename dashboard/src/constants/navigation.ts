@@ -14,7 +14,6 @@ import {
   GitPullRequest,
   LayoutDashboard,
   Megaphone,
-  MonitorPlay,
   Rocket,
   Scale,
   ScrollText,
@@ -66,7 +65,6 @@ export const OS_NAVIGATION: NavGroup[] = [
   {
     group: "Engineering & QA",
     items: [
-      { label: "Live Frontend Preview", href: "/frontend-preview", icon: MonitorPlay },
       { label: "GitHub Integration", href: "/github", icon: GitBranch },
       { label: "Code Review", href: "/code-review", icon: GitPullRequest },
       { label: "Testing Center", href: "/testing", icon: ShieldCheck },

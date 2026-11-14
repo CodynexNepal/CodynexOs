@@ -182,8 +182,15 @@ export function LiveBrowserViewport({
 
           {/* Status Badge */}
           <span
+            title={
+              state.humanTakeover
+                ? "Browser session is currently driven manually by human operator"
+                : state.status === "NAVIGATING"
+                ? "Playwright is actively loading and rendering target webpage"
+                : "Playwright browser instance is active, warm, and ready for agent commands"
+            }
             className={cn(
-              "rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase",
+              "flex items-center gap-1.5 rounded px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider",
               state.humanTakeover
                 ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
                 : state.status === "NAVIGATING"
@@ -191,7 +198,17 @@ export function LiveBrowserViewport({
                 : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
             )}
           >
-            {state.humanTakeover ? "Human Control" : state.status}
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                state.humanTakeover
+                  ? "bg-amber-400 animate-pulse"
+                  : state.status === "NAVIGATING"
+                  ? "bg-sky-400 animate-ping"
+                  : "bg-emerald-400"
+              )}
+            />
+            {state.humanTakeover ? "Human Control" : state.status === "IDLE" ? "Active • Ready" : state.status}
           </span>
         </div>
 

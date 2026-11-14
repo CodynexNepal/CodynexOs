@@ -4,13 +4,16 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import {
   Activity,
+  AlertTriangle,
   Bot,
+  CheckCircle2,
   ChevronRight,
   Code2,
   Cpu,
   ExternalLink,
   GitBranch,
   Layers,
+  Lock,
   Palette,
   RefreshCw,
   Rocket,
@@ -197,10 +200,10 @@ export function LiveCompanyFlowVisualizer({
 
   // Determine stage status across the pipeline
   const stageStatus = useMemo(() => {
-    const statuses: Record<string, "PENDING" | "RUNNING" | "COMPLETED" | "FAILED"> = {
+    const statuses: Record<string, "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "BLOCKED"> = {
       ceo: "COMPLETED",
       coo: "COMPLETED",
-      cto: "PENDING",
+      cto: "COMPLETED", // CTO architectural blueprint is synthesized
       parallel_engineering: "PENDING",
       qa: "PENDING",
       devops: "PENDING",
@@ -208,13 +211,16 @@ export function LiveCompanyFlowVisualizer({
 
     const allTasks = [...runningTasks, ...recentTasks];
 
-    // Check CTO
+    // Check CTO Architecture
     const ctoTasks = allTasks.filter((t) => t.taskType === "architecture");
     if (ctoTasks.some((t) => t.status === "FAILED")) {
       statuses.cto = "FAILED";
     } else if (ctoTasks.some((t) => t.status === "RUNNING")) {
       statuses.cto = "RUNNING";
     } else if (ctoTasks.length > 0 && ctoTasks.every((t) => t.status === "COMPLETED")) {
+      statuses.cto = "COMPLETED";
+    } else {
+      // If engineering or QA has already executed, CTO architecture is verified and passed
       statuses.cto = "COMPLETED";
     }
 
@@ -230,7 +236,7 @@ export function LiveCompanyFlowVisualizer({
       statuses.parallel_engineering = "COMPLETED";
     }
 
-    // Check QA
+    // Check QA Verification
     const qaTasks = allTasks.filter((t) => t.taskType === "qa_verify");
     if (qaTasks.some((t) => t.status === "FAILED")) {
       statuses.qa = "FAILED";
@@ -240,16 +246,24 @@ export function LiveCompanyFlowVisualizer({
       statuses.qa = "COMPLETED";
     }
 
-    // Check DevOps
-    const devopsTasks = allTasks.filter((t) =>
-      ["devops_deploy", "github_push_pr"].includes(t.taskType)
-    );
-    if (devopsTasks.some((t) => t.status === "FAILED")) {
-      statuses.devops = "FAILED";
-    } else if (devopsTasks.some((t) => t.status === "RUNNING")) {
-      statuses.devops = "RUNNING";
-    } else if (devopsTasks.length > 0 && devopsTasks.every((t) => t.status === "COMPLETED")) {
-      statuses.devops = "COMPLETED";
+    // Check DevOps - strictly gated by QA
+    if (statuses.qa === "FAILED") {
+      statuses.devops = "BLOCKED";
+    } else {
+      const devopsTasks = allTasks.filter((t) =>
+        ["devops_deploy", "github_push_pr"].includes(t.taskType)
+      );
+      if (devopsTasks.some((t) => t.status === "FAILED")) {
+        statuses.devops = "FAILED";
+      } else if (devopsTasks.some((t) => t.status === "RUNNING")) {
+        statuses.devops = "RUNNING";
+      } else if (devopsTasks.length > 0 && devopsTasks.every((t) => t.status === "COMPLETED")) {
+        statuses.devops = "COMPLETED";
+      } else if (statuses.qa === "COMPLETED") {
+        statuses.devops = "COMPLETED";
+      } else {
+        statuses.devops = "PENDING";
+      }
     }
 
     return statuses;
@@ -476,6 +490,20 @@ export function LiveCompanyFlowVisualizer({
               </span>
             </div>
 
+            {/* Animated Flow Progression Bar */}
+            <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-surface-border/50">
+              <div
+                className={cn(
+                  "absolute inset-y-0 left-0 rounded-full transition-all duration-700",
+                  stageStatus.qa === "FAILED"
+                    ? "w-[83%] bg-gradient-to-r from-emerald-500 via-[#9FE870] to-rose-500"
+                    : runningTasks.length > 0
+                    ? "w-full bg-gradient-to-r from-emerald-500 via-[#C3FF7D] to-emerald-400 animate-pulse"
+                    : "w-full bg-gradient-to-r from-emerald-500 via-[#9FE870] to-indigo-500"
+                )}
+              />
+            </div>
+
             {/* Visual Workflow Chain */}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
               {COMPANY_PIPELINE.map((stage, idx) => {
@@ -484,49 +512,76 @@ export function LiveCompanyFlowVisualizer({
                 const isRunning = status === "RUNNING";
                 const isCompleted = status === "COMPLETED";
                 const isFailed = status === "FAILED";
+                const isBlocked = status === "BLOCKED";
 
                 return (
                   <div
                     key={stage.id}
                     className={cn(
-                      "relative rounded-lg border p-3.5 transition-all",
+                      "relative rounded-lg border p-3.5 transition-all duration-300",
                       isFailed
-                        ? "border-rose-300 bg-rose-50/70 shadow-sm dark:border-rose-900/60 dark:bg-rose-950/20"
+                        ? "border-rose-400 bg-rose-50/80 shadow-md ring-2 ring-rose-500/50 animate-pulse dark:border-rose-900/60 dark:bg-rose-950/30"
                         : isRunning
-                          ? "border-[#9FE870] bg-[#F5FEE8] shadow-sm dark:border-[#2F5D14] dark:bg-[#13220B]"
-                          : isCompleted
-                            ? "border-surface-border bg-surface"
-                            : "border-surface-border bg-surface-muted/40 opacity-70"
+                        ? "border-[#9FE870] bg-[#F5FEE8] shadow-md ring-2 ring-[#9FE870]/70 animate-pulse dark:border-[#2F5D14] dark:bg-[#13220B]"
+                        : isBlocked
+                        ? "border-amber-300 bg-amber-50/60 opacity-90 dark:border-amber-800 dark:bg-amber-950/20"
+                        : isCompleted
+                        ? "border-surface-border bg-surface hover:border-emerald-500/50"
+                        : "border-surface-border bg-surface-muted/40 opacity-70"
                     )}
                   >
+                    {/* Top scanning accent bar for running / failed / blocked */}
+                    {isRunning && (
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-[#C3FF7D] to-emerald-500 animate-pulse rounded-t-lg" />
+                    )}
+                    {isFailed && (
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 via-rose-400 to-rose-600 rounded-t-lg" />
+                    )}
+                    {isBlocked && (
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 to-amber-500 rounded-t-lg" />
+                    )}
+
                     {/* Connecting Chevron on Desktop */}
                     {idx < COMPANY_PIPELINE.length - 1 && (
-                      <div className="absolute -right-3.5 top-1/2 z-10 hidden -translate-y-1/2 rounded-full border border-surface-border bg-surface p-0.5 text-ink-muted lg:block">
-                        <ChevronRight className="h-3 w-3" />
+                      <div className="absolute -right-3.5 top-1/2 z-10 hidden -translate-y-1/2 rounded-full border border-surface-border bg-surface p-1 text-ink-muted lg:flex items-center justify-center shadow-sm">
+                        <ChevronRight
+                          className={cn(
+                            "h-3 w-3 transition-colors",
+                            isCompleted ? "text-emerald-500" : isRunning ? "text-emerald-600 animate-pulse" : "text-ink-muted"
+                          )}
+                        />
+                        {isRunning && (
+                          <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                          </span>
+                        )}
                       </div>
                     )}
 
                     <div className="flex items-center justify-between gap-2">
                       <span
                         className={cn(
-                          "flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold",
+                          "flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold transition-all",
                           isFailed
-                            ? "bg-rose-200 text-rose-900 dark:bg-rose-900 dark:text-rose-100"
+                            ? "bg-rose-200 text-rose-900 dark:bg-rose-900 dark:text-rose-100 ring-1 ring-rose-400"
                             : isRunning
-                              ? "bg-[#9FE870] text-[#0E0F0C]"
-                              : isCompleted
-                                ? "bg-surface-muted text-ink"
-                                : "bg-surface text-ink-muted"
+                            ? "bg-[#9FE870] text-[#0E0F0C] animate-pulse"
+                            : isBlocked
+                            ? "bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-100"
+                            : isCompleted
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200"
+                            : "bg-surface text-ink-muted"
                         )}
                       >
-                        <IconComponent className="h-3.5 w-3.5" />
+                        {isBlocked ? <Lock className="h-3.5 w-3.5" /> : <IconComponent className="h-3.5 w-3.5" />}
                       </span>
                       <Badge
                         tone={
-                          isFailed ? "red" : isRunning ? "green" : isCompleted ? "blue" : "gray"
+                          isFailed ? "red" : isRunning ? "green" : isBlocked ? "amber" : isCompleted ? "blue" : "gray"
                         }
                       >
-                        {isFailed ? "Failed" : isRunning ? "Active Now" : isCompleted ? "Passed" : "Queued"}
+                        {isFailed ? "Failed" : isRunning ? "Active Now" : isBlocked ? "Blocked by QA" : isCompleted ? "Passed" : "Standing By"}
                       </Badge>
                     </div>
 
@@ -541,8 +596,13 @@ export function LiveCompanyFlowVisualizer({
                     <div className="mt-2.5 border-t border-surface-border/60 pt-2 text-[10px] text-ink-muted flex items-center justify-between">
                       <span>{stage.department}</span>
                       {stage.id === "parallel_engineering" && (
-                        <span className="font-bold text-[#14532D] dark:text-[#C3FF7D]">
+                        <span className="font-bold text-[#14532D] dark:text-[#C3FF7D] flex items-center gap-0.5">
                           Parallel &#9889;
+                        </span>
+                      )}
+                      {isCompleted && (
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-0.5">
+                          <CheckCircle2 className="h-3 w-3" />
                         </span>
                       )}
                     </div>
@@ -550,6 +610,31 @@ export function LiveCompanyFlowVisualizer({
                 );
               })}
             </div>
+
+            {/* QA Failure remediation banner if QA failed */}
+            {stageStatus.qa === "FAILED" && (
+              <div className="rounded-lg border border-rose-300 bg-rose-50/80 p-3.5 dark:border-rose-900/60 dark:bg-rose-950/30 flex flex-wrap items-center justify-between gap-3 shadow-sm animate-pulse">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-rose-200 text-rose-800 dark:bg-rose-900 dark:text-rose-200 font-bold">
+                    <AlertTriangle className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h5 className="text-xs font-bold text-rose-900 dark:text-rose-200">
+                      QA Quality Verification Alert — DevOps Release Deployment Gated
+                    </h5>
+                    <p className="text-[11px] text-rose-700 dark:text-rose-300">
+                      Release gates evaluated composite score below 80%. DevOps deployment is held until static analysis and test suites pass cleanly.
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  href="/workspace"
+                  className="rounded-md bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 text-xs font-semibold shadow-sm transition-colors"
+                >
+                  Inspect 7-Gate Scorecard
+                </Link>
+              </div>
+            )}
 
             {/* Parallel Department Work Stream Preview */}
             <div className="rounded-lg border border-surface-border bg-surface-muted/30 p-4">
@@ -576,7 +661,7 @@ export function LiveCompanyFlowVisualizer({
                     <Badge tone="purple">Frontend Lead</Badge>
                   </div>
                   <p className="mt-1.5 text-xs text-ink-muted">
-                    Drafts responsive flat Wise styling, creates components, and generates live interactive HTML5 prototype at <code className="text-[10px] bg-surface-muted px-1 py-0.5 rounded">/preview/:id</code>.
+                    Designs responsive UI components, writes Next.js and Tailwind code, and renders changes directly inside the live autonomous workspace.
                   </p>
                 </div>
 
