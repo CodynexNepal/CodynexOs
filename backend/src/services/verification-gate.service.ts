@@ -459,9 +459,13 @@ export class VerificationGateService {
     // Save report in Database
     try {
       const qaRepo = AppDataSource.getRepository(QaReportEntity);
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const safeTaskId = taskId && UUID_REGEX.test(taskId) ? taskId : '00000000-0000-0000-0000-000000000000';
+      const safeReviewerId = reviewerEmployeeId && UUID_REGEX.test(reviewerEmployeeId) ? reviewerEmployeeId : null;
+
       const report = qaRepo.create({
-        taskId: taskId || '00000000-0000-0000-0000-000000000000',
-        reviewerEmployeeId: reviewerEmployeeId || null,
+        taskId: safeTaskId,
+        reviewerEmployeeId: safeReviewerId,
         verdict: finalVerdict,
         checksExecuted: gates.map((g) => ({
           name: `Gate ${g.gateNumber}: ${g.gateName}`,

@@ -4,6 +4,7 @@ import { WorkspaceService } from './workspace.service';
 import { verificationGateService } from './verification-gate.service';
 import { ModelRouterService } from '../ai/router/model-router.service';
 import { socketServer } from '../socket/socket.server';
+import { dotEnvConfig } from '../configs/envConfig';
 import { logger } from '../utils/logger.util';
 
 export interface ToolDefinition {
@@ -33,6 +34,7 @@ export interface AgentSessionExecution {
   startedAt: string;
   completedAt?: string;
   finalAnswer?: string;
+  filesWritten?: string[];
   error?: string;
 }
 
@@ -119,9 +121,14 @@ export class AgentExecutionService {
     owner?: string;
     repoName?: string;
     maxSteps?: number;
+    preferredProvider?: string;
+    preferredModel?: string;
   }): Promise<AgentSessionExecution> {
-    const { sessionId, taskId, instruction, roleTitle, owner = 'organization', repoName = 'workspace' } = params;
+    const { sessionId, taskId, instruction, roleTitle, owner = 'organization', repoName = 'workspace', preferredProvider, preferredModel } = params;
     const maxSteps = params.maxSteps || 15;
+    const effectiveProvider =
+      preferredProvider ||
+      (dotEnvConfig.GROQ_API_KEY ? 'groq' : dotEnvConfig.GEMINI_API_KEY ? 'gemini' : undefined);
 
     const session: AgentSessionExecution = {
       sessionId,
@@ -167,6 +174,7 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
 
     let contextHistory = `Initial User Task: ${instruction}\nTarget Workspace: ${owner}/${repoName}\n`;
     session.status = 'RUNNING';
+    const filesWrittenSet = new Set<string>();
 
     while (session.currentStep < maxSteps) {
       // Check cancellation
@@ -202,7 +210,7 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
             responseFormat: 'json',
             maxOutputTokens: 2048,
           },
-          { taskId },
+          { taskId, preferredProvider: effectiveProvider, preferredModel, agentRole: roleTitle },
         );
       } catch (err: any) {
         logger.error('Agent reasoning step error', { error: err.message, taskId });
@@ -211,12 +219,13 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
         continue;
       }
 
-      let parsed: { thought?: string; tool?: string; toolInput?: Record<string, unknown> } = {};
-      try {
-        parsed = JSON.parse(aiResponse.content);
-      } catch {
-        parsed = { thought: 'Reviewing next step', tool: 'task_complete', toolInput: { summary: aiResponse.content } };
-      }
+      const parsed: { thought?: string; tool?: string; toolInput?: Record<string, unknown> } = (() => {
+        try {
+          return JSON.parse(aiResponse.content);
+        } catch {
+          return { thought: 'Reviewing next step', tool: 'task_complete', toolInput: { summary: aiResponse.content } };
+        }
+      })();
 
       const thought = parsed.thought || 'Executing tool';
       const toolName = parsed.tool || 'task_complete';
@@ -251,6 +260,10 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
         break;
       }
 
+      if (toolName === 'file_write' && toolInput.path) {
+        filesWrittenSet.add(String(toolInput.path));
+      }
+
       // Execute real tool
       const startMs = Date.now();
       let toolResult: unknown;
@@ -278,12 +291,71 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
 
       // Append observation to context
       contextHistory += `\nStep ${session.currentStep} Tool [${toolName}] Input: ${JSON.stringify(toolInput)}\nObservation: ${
-        typeof toolResult === 'string' ? toolResult.slice(0, 4000) : JSON.stringify(toolResult).slice(0, 4000)
+        typeof toolResult === 'string' ? toolResult.slice(0, 2000) : JSON.stringify(toolResult).slice(0, 2000)
       }\n`;
+
+      // Bound context window to keep inference lean and ultra-responsive
+      if (contextHistory.length > 8000) {
+        const lines = contextHistory.split('\n');
+        const header = lines.slice(0, 3).join('\n');
+        const recent = lines.slice(-25).join('\n');
+        contextHistory = `${header}\n... [earlier steps truncated for speed] ...\n${recent}`;
+      }
     }
+
+    session.filesWritten = Array.from(filesWrittenSet);
 
     if (session.status !== 'COMPLETED' && session.status !== 'CANCELLED') {
       session.status = session.currentStep >= maxSteps ? 'COMPLETED' : 'FAILED';
+    }
+
+    // If finalAnswer was not set by task_complete, synthesize an in-depth executive debrief
+    if (!session.finalAnswer) {
+      try {
+        const debriefRes = await this.modelRouter.complete(
+          {
+            systemPrompt:
+              'You are a Principal Software Architect synthesizing an executive deliverable debrief of an autonomous AI engineering run.',
+            userPrompt: `Autonomous Task Session Completed.
+Task: "${instruction}"
+Target Workspace: "${owner}/${repoName}"
+Total Steps: ${session.currentStep} of ${maxSteps}
+Files Written: ${session.filesWritten.length > 0 ? session.filesWritten.join(', ') : 'None'}
+
+Actions Log:
+${session.steps
+  .map(
+    (s) =>
+      `- Step ${s.stepIndex} [${s.tool}] ${s.thought} -> ${
+        typeof s.toolOutput === 'string'
+          ? s.toolOutput.slice(0, 150)
+          : JSON.stringify(s.toolOutput).slice(0, 150)
+      }`,
+  )
+  .join('\n')}
+
+Generate a comprehensive Executive Deliverables Report in markdown:
+### 1. Executive Summary
+(Clear summary of what was accomplished, verified, or diagnosed)
+
+### 2. Actions & Tools Breakdown
+(What specific commands, browser checks, or file edits were executed)
+
+### 3. Deliverables & Files Changed
+(List files modified or created. If 0 files were changed, state why and identify the roadblocks)
+
+### 4. Next Recommended Steps
+(What the human operator or agent should do next)`,
+            maxOutputTokens: 2048,
+          },
+          { taskId, preferredProvider: effectiveProvider, preferredModel, agentRole: roleTitle },
+        );
+        session.finalAnswer = debriefRes.content;
+      } catch {
+        session.finalAnswer = `Autonomous run completed after ${session.currentStep} steps across tools: ${session.steps
+          .map((s) => s.tool)
+          .join(', ')}. Files modified: ${session.filesWritten.length > 0 ? session.filesWritten.join(', ') : 'None'}.`;
+      }
     }
 
     session.completedAt = new Date().toISOString();
@@ -293,6 +365,7 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
       status: session.status,
       completedAt: session.completedAt,
       finalAnswer: session.finalAnswer,
+      filesWritten: session.filesWritten,
     });
 
     return session;

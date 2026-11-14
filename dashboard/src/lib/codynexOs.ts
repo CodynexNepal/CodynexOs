@@ -423,6 +423,8 @@ export const codynexApi = {
       owner?: string;
       repoName?: string;
       maxSteps?: number;
+      preferredProvider?: string;
+      preferredModel?: string;
     }) => api.post("/agent/sessions/run", body),
     pause: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/pause`),
     resume: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/resume`),

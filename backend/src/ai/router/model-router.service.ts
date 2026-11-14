@@ -361,24 +361,33 @@ export class ModelRouterService {
     latencyMs: number;
   }) {
     if (!AppDataSource.isInitialized) return;
-    const totalTokens = params.inputTokens + params.outputTokens;
-    await AppDataSource.getRepository(AiUsageLogEntity).save(
-      AppDataSource.getRepository(AiUsageLogEntity).create({
-        taskId: params.taskId ?? null,
-        userId: params.userId ?? null,
-        employeeId: params.employeeId ?? null,
-        requestId: params.requestId,
-        provider: params.provider,
-        model: params.model,
-        inputTokens: params.inputTokens,
-        outputTokens: params.outputTokens,
-        totalTokens,
-        estimatedCostUsd: params.estimatedCostUsd.toFixed(6),
-        status: params.status,
-        errorCategory: params.errorCategory ?? null,
-        latencyMs: params.latencyMs,
-      }),
-    );
+    try {
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const safeTaskId = params.taskId && UUID_REGEX.test(params.taskId) ? params.taskId : null;
+      const safeUserId = params.userId && UUID_REGEX.test(params.userId) ? params.userId : null;
+      const safeEmployeeId = params.employeeId && UUID_REGEX.test(params.employeeId) ? params.employeeId : null;
+
+      const totalTokens = params.inputTokens + params.outputTokens;
+      await AppDataSource.getRepository(AiUsageLogEntity).save(
+        AppDataSource.getRepository(AiUsageLogEntity).create({
+          taskId: safeTaskId,
+          userId: safeUserId,
+          employeeId: safeEmployeeId,
+          requestId: params.requestId,
+          provider: params.provider,
+          model: params.model,
+          inputTokens: params.inputTokens,
+          outputTokens: params.outputTokens,
+          totalTokens,
+          estimatedCostUsd: params.estimatedCostUsd.toFixed(6),
+          status: params.status,
+          errorCategory: params.errorCategory ?? null,
+          latencyMs: params.latencyMs,
+        }),
+      );
+    } catch (err: any) {
+      logger.warn('Failed to record AI usage log', { error: err.message, taskId: params.taskId });
+    }
   }
 
   private async acquireSlot(maxConcurrent: number, signal?: AbortSignal): Promise<void> {
@@ -574,8 +583,6 @@ export class ModelRouterService {
     // 1. Preferred provider (agent preference or caller preference)
     if (preferredProvider) {
       addCandidate(preferredProvider, preferredModel);
-    } else {
-      addCandidate(AiProviderName.OLLAMA);
     }
 
     // 2. Explicit fallback provider (if specified)
@@ -586,17 +593,16 @@ export class ModelRouterService {
     // 3. Fallback candidates only if autoFreeFallback is enabled
     const allowFallback = globalSettings.autoFreeFallback !== false;
     if (allowFallback) {
-      // Ollama (local primary) if not already first
-      addCandidate(AiProviderName.OLLAMA);
-
-      // Default priority order across verified free providers
+      // Default priority order across verified free providers:
+      // Fast cloud inference (Groq ~200ms, Gemini ~400ms, OpenRouter) is prioritized
+      // before local Ollama so agent tasks do not stall on slow local CPU inference.
       const priorityList = globalSettings.providerPriority || [
-        AiProviderName.OLLAMA,
-        AiProviderName.GEMINI,
         AiProviderName.GROQ,
+        AiProviderName.GEMINI,
         AiProviderName.OPENROUTER,
         AiProviderName.CLOUDFLARE,
         AiProviderName.HUGGINGFACE,
+        AiProviderName.OLLAMA,
       ];
 
       for (const p of priorityList) {

@@ -581,7 +581,7 @@ export class OsController {
 
   agentRunSession = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { sessionId, taskId, instruction, roleTitle, owner, repoName, maxSteps } = req.body;
+      const { sessionId, taskId, instruction, roleTitle, owner, repoName, maxSteps, preferredProvider, preferredModel } = req.body;
       const cleanSessionId = sessionId || `session_${Date.now()}`;
       void agentExecutionService.runAgentLoop({
         sessionId: cleanSessionId,
@@ -591,6 +591,8 @@ export class OsController {
         owner,
         repoName,
         maxSteps,
+        preferredProvider,
+        preferredModel,
       });
       res.status(STATUS_CODE.OK).json({ success: true, data: { sessionId: cleanSessionId, status: 'STARTED' } });
     } catch (err) {

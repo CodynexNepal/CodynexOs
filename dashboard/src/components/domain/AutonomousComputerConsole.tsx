@@ -39,9 +39,16 @@ interface AgentStepLog {
   timestamp: string;
 }
 
+interface RepoOption {
+  id: string;
+  owner: string;
+  name: string;
+  defaultBranch?: string;
+}
+
 export function AutonomousComputerConsole({
   initialSessionId = "codynex_main_session",
-  repoId,
+  repoId: propRepoId,
   className,
 }: AutonomousComputerConsoleProps) {
   const [sessionId] = useState(initialSessionId);
@@ -55,6 +62,30 @@ export function AutonomousComputerConsole({
   const [stepLogs, setStepLogs] = useState<AgentStepLog[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [finalReport, setFinalReport] = useState<string | null>(null);
+
+  // Connected Repositories
+  const [repos, setRepos] = useState<RepoOption[]>([]);
+  const [selectedRepoId, setSelectedRepoId] = useState<string>(propRepoId || "");
+  const selectedRepo = repos.find((r) => r.id === selectedRepoId) || repos[0];
+
+  useEffect(() => {
+    const loadRepos = async () => {
+      try {
+        const res = await codynexApi.github.repos();
+        const list = (res.data?.data || []) as RepoOption[];
+        setRepos(list);
+        if (!selectedRepoId && list.length > 0) {
+          const match =
+            list.find((r) => r.name.toLowerCase().includes("aliza") || r.name.toLowerCase().includes("hostel")) ||
+            list[0];
+          setSelectedRepoId(match.id);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void loadRepos();
+  }, [selectedRepoId]);
 
   // Restore active backend session if user navigated away and returned
   useEffect(() => {
@@ -118,6 +149,8 @@ export function AutonomousComputerConsole({
         sessionId,
         instruction: cleanPrompt,
         roleTitle: "Autonomous Software & Computer Engineer",
+        owner: selectedRepo?.owner || "CodynexNepal",
+        repoName: selectedRepo?.name || "workspace",
         maxSteps,
       });
     } catch {
@@ -363,14 +396,25 @@ export function AutonomousComputerConsole({
           }}
           className="space-y-3"
         >
-          <div className="flex items-center justify-between text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#30363d] pb-2 text-xs">
             <span className="font-bold text-white flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-[#9FE870]" />
               Assign Task to Autonomous Computer Agent
             </span>
-            <span className="text-[11px] text-[#8b949e]">
-              Agent plans actions, launches browser, runs commands &amp; writes code
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-[#8b949e]">Target Repository:</span>
+              <select
+                value={selectedRepoId}
+                onChange={(e) => setSelectedRepoId(e.target.value)}
+                className="rounded border border-[#30363d] bg-[#0d1117] px-2 py-1 text-xs text-white font-mono focus:border-[#58a6ff] focus:outline-none"
+              >
+                {repos.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.owner}/{r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="relative">
@@ -407,16 +451,49 @@ export function AutonomousComputerConsole({
           </div>
         </form>
 
-        {/* Final Report Deliverable */}
+        {/* Prominent Executive Deliverables & Execution Outcome Card */}
         {finalReport && (
-          <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-950/20 p-4 text-xs">
-            <h4 className="font-bold text-emerald-400 flex items-center gap-1.5 mb-1.5">
-              <Sparkles className="h-4 w-4" />
-              Autonomous Deliverable Verified
-            </h4>
-            <p className="whitespace-pre-wrap leading-relaxed text-[#e6edf3] font-mono">
+          <div className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-5 shadow-lg space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-500/20 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 font-bold">
+                  ✓
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    Executive Deliverables Report & Execution Outcome
+                    <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-mono text-emerald-300 uppercase">
+                      {agentStatus === "COMPLETED" ? "TASK COMPLETED" : "EXECUTION SUMMARY"}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-[#8b949e]">
+                    Target: <span className="font-mono text-white">{selectedRepo ? `${selectedRepo.owner}/${selectedRepo.name}` : "Workspace"}</span> · Steps Executed: <span className="font-mono text-white">{currentStep}/{maxSteps}</span>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("CODE")}
+                  className="rounded-md border border-[#30363d] bg-[#21262d] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#30363d] transition-colors flex items-center gap-1.5"
+                >
+                  <Code2 className="h-3.5 w-3.5 text-[#9FE870]" />
+                  Inspect Code Diffs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("SCORECARD")}
+                  className="rounded-md border border-[#30363d] bg-[#21262d] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#30363d] transition-colors flex items-center gap-1.5"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                  View 7-Gate Scorecard
+                </button>
+              </div>
+            </div>
+
+            <div className="text-xs text-[#c9d1d9] leading-relaxed whitespace-pre-wrap font-sans space-y-2">
               {finalReport}
-            </p>
+            </div>
           </div>
         )}
       </div>
@@ -428,7 +505,7 @@ export function AutonomousComputerConsole({
           <LiveBrowserViewport sessionId={sessionId} />
 
           {/* Top Right: Code Streamer */}
-          <LiveCodexFileEditor repoId={repoId} />
+          <LiveCodexFileEditor repoId={selectedRepo?.id} />
 
           {/* Bottom Left: Real Interactive Terminal */}
           <LiveInteractiveTerminal sessionId={sessionId} />
@@ -506,7 +583,7 @@ export function AutonomousComputerConsole({
       {viewMode === "CODE" && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           <div className="xl:col-span-8">
-            <LiveCodexFileEditor repoId={repoId} />
+            <LiveCodexFileEditor repoId={selectedRepo?.id} />
           </div>
           <div className="xl:col-span-4">
             <LiveInteractiveTerminal sessionId={sessionId} />
@@ -546,7 +623,11 @@ export function AutonomousComputerConsole({
       )}
 
       {viewMode === "SCORECARD" && (
-        <DeliveryScorecard repoName="workspace" taskId={initialSessionId} />
+        <DeliveryScorecard
+          owner={selectedRepo?.owner || "CodynexNepal"}
+          repoName={selectedRepo?.name || "workspace"}
+          taskId={sessionId}
+        />
       )}
     </div>
   );

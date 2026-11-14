@@ -119,7 +119,16 @@ export class BrowserService {
     const { page, state } = await this.getOrCreateSession(sessionId);
     state.status = 'NAVIGATING';
 
-    const cleanUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+    let cleanUrl = (url || '').trim();
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      const isLocal = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i.test(cleanUrl);
+      cleanUrl = isLocal ? `http://${cleanUrl}` : `https://${cleanUrl}`;
+    }
+
+    // Auto-downgrade local addresses from https to http to avoid ERR_SSL_PROTOCOL_ERROR
+    if (/^https:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i.test(cleanUrl)) {
+      cleanUrl = cleanUrl.replace(/^https:\/\//i, 'http://');
+    }
 
     try {
       // Use 'commit' first to confirm response headers/document start, then soft-wait for domcontentloaded
@@ -149,6 +158,35 @@ export class BrowserService {
       return state;
     } catch (err: any) {
       state.status = 'IDLE';
+
+      // If SSL protocol error happened on an HTTPS URL, attempt automatic HTTP downgrade
+      if (err?.message?.includes('ERR_SSL_PROTOCOL_ERROR') && cleanUrl.startsWith('https://')) {
+        const httpFallback = cleanUrl.replace(/^https:\/\//i, 'http://');
+        try {
+          await page.goto(httpFallback, { waitUntil: 'commit', timeout: 30000 });
+          await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
+          state.url = page.url();
+          state.title = await page.title().catch(() => '');
+          const screenshot = await this.captureScreenshot(page, sessionId);
+          state.lastScreenshot = screenshot;
+          state.actionHistory.push({
+            action: 'NAVIGATE',
+            target: httpFallback,
+            timestamp: new Date().toISOString(),
+          });
+          socketServer.emit('browser:navigation', {
+            sessionId,
+            url: state.url,
+            title: state.title,
+            screenshot,
+            timestamp: new Date().toISOString(),
+          });
+          return state;
+        } catch {
+          // fallback failed, continue to standard handling below
+        }
+      }
+
       // Gracefully handle net::ERR_ABORTED if page has already navigated to target or redirected
       if (err?.message?.includes('ERR_ABORTED')) {
         const curUrl = page.url();
