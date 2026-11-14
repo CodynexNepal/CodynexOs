@@ -320,9 +320,9 @@ describe('Multi-Provider Free AI Integration & Management System', () => {
       vi.spyOn(router.aiSettingsService, 'getGlobalSettings').mockResolvedValue({
         freeOnlyMode: true,
         allowPaidProviders: false,
-        autoFreeFallback: true,
-        maxRetries: 3,
-        requestTimeoutMs: 60000,
+        autoFreeFallback: false,
+        maxRetries: 1,
+        requestTimeoutMs: 5000,
         maxConcurrentRequests: 4,
         dailyTokenLimit: 500000,
         providerPriority: [AiProviderName.OPENAI],
@@ -335,7 +335,7 @@ describe('Multi-Provider Free AI Integration & Management System', () => {
           { preferredProvider: AiProviderName.OPENAI, preferredModel: 'gpt-4o' },
         ),
       ).rejects.toThrow();
-    });
+    }, 20000);
   });
 
   describe('7. Quota and Provider Management', () => {

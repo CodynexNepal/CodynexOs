@@ -70,6 +70,18 @@ export function cleanTokenExpiry(val?: string, fallback: string = '15m'): string
   return fallback;
 }
 
+function cleanDatabaseUrl(raw?: string): string {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  try {
+    const parsed = new URL(trimmed);
+    parsed.searchParams.delete('channel_binding');
+    return parsed.toString();
+  } catch {
+    return trimmed.replace(/([?&])channel_binding=[^&]+(&|$)/, '$1').replace(/[?&]$/, '');
+  }
+}
+
 export function cleanEnvConfig(): CleanEnvConfig {
   const nodeEnv = (process.env.NODE_ENV as CleanEnvConfig['NODE_ENV']) || 'development';
   const isProd = nodeEnv === 'production';
@@ -95,7 +107,7 @@ export function cleanEnvConfig(): CleanEnvConfig {
   const config: CleanEnvConfig = {
     PORT: Number.isNaN(port) ? 8000 : port,
     NODE_ENV: nodeEnv,
-    DATABASE_URL: getRequiredEnv('DATABASE_URL', process.env.DATABASE_URL || defaultDb),
+    DATABASE_URL: cleanDatabaseUrl(getRequiredEnv('DATABASE_URL', process.env.DATABASE_URL || defaultDb)),
     REDIS_URL: (process.env.REDIS_URL || 'redis://127.0.0.1:6379').trim(),
     ENABLE_REDIS: process.env.ENABLE_REDIS === 'true',
     ENABLE_WORKERS: process.env.ENABLE_WORKERS !== 'false',

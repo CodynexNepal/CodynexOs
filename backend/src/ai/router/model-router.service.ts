@@ -583,28 +583,32 @@ export class ModelRouterService {
       addCandidate(fallbackProvider, fallbackModel);
     }
 
-    // 3. Ollama (local primary) if not already first
-    addCandidate(AiProviderName.OLLAMA);
+    // 3. Fallback candidates only if autoFreeFallback is enabled
+    const allowFallback = globalSettings.autoFreeFallback !== false;
+    if (allowFallback) {
+      // Ollama (local primary) if not already first
+      addCandidate(AiProviderName.OLLAMA);
 
-    // 4. Default priority order across verified free providers
-    const priorityList = globalSettings.providerPriority || [
-      AiProviderName.OLLAMA,
-      AiProviderName.GEMINI,
-      AiProviderName.GROQ,
-      AiProviderName.OPENROUTER,
-      AiProviderName.CLOUDFLARE,
-      AiProviderName.HUGGINGFACE,
-    ];
+      // Default priority order across verified free providers
+      const priorityList = globalSettings.providerPriority || [
+        AiProviderName.OLLAMA,
+        AiProviderName.GEMINI,
+        AiProviderName.GROQ,
+        AiProviderName.OPENROUTER,
+        AiProviderName.CLOUDFLARE,
+        AiProviderName.HUGGINGFACE,
+      ];
 
-    for (const p of priorityList) {
-      if (p !== AiProviderName.OPENAI || allowPaid) {
-        addCandidate(p);
+      for (const p of priorityList) {
+        if (p !== AiProviderName.OPENAI || allowPaid) {
+          addCandidate(p);
+        }
       }
-    }
 
-    // 5. OpenAI only if paid providers are explicitly allowed AND free-only mode is OFF
-    if (allowPaid && !freeOnlyMode) {
-      addCandidate(AiProviderName.OPENAI);
+      // OpenAI only if paid providers are explicitly allowed AND free-only mode is OFF
+      if (allowPaid && !freeOnlyMode) {
+        addCandidate(AiProviderName.OPENAI);
+      }
     }
 
     const errors: string[] = [];

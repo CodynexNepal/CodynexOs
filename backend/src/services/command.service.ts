@@ -123,10 +123,10 @@ export class CommandService {
     // this, requests such as “write code for project Aliza Wears” could be
     // replaced by an AI-generated analysis task, which only saved a report.
     const isImplementationRequest =
-      /\b(write\s+(?:the\s+)?code|code|implement|build|scaffold|create|develop|update|fix|deploy)\b/i.test(
+      /\b(add|write\s+(?:the\s+)?code|code|implement|build|scaffold|create|develop|update|fix|deploy|refactor)\b/i.test(
         lower,
       ) &&
-      /\b(app|application|api|backend|frontend|website|site|page|screen|component|feature|project|repo|repository|code|ui|ux|dashboard|landing)\b/i.test(
+      /\b(app|application|api|backend|frontend|website|site|page|screen|component|feature|project|repo|repository|code|ui|ux|dashboard|landing|carousel|modal|form|table|view)\b/i.test(
         lower,
       );
     const isRepoLifecycle =
@@ -309,7 +309,7 @@ export class CommandService {
         description: `Implement backend API endpoints, validation, and migrations for: ${instruction}`,
         departmentSlug: 'engineering',
         employeeSlug: 'backend_lead',
-        taskType: 'code',
+        taskType: 'code_generate',
         priority: 82,
         dependsOnKeys: needsUiUx ? ['architecture', 'ui_ux_design'] : ['architecture'],
         requiresApproval: false,
@@ -321,7 +321,7 @@ export class CommandService {
         description: `Build responsive TypeScript/Tailwind components aligned with UI/UX prototype and wire live API hooks for: ${instruction}`,
         departmentSlug: 'engineering',
         employeeSlug: 'frontend_lead',
-        taskType: 'code',
+        taskType: 'code_generate',
         priority: 80,
         dependsOnKeys: needsUiUx ? ['architecture', 'ui_ux_design'] : ['architecture'],
         requiresApproval: false,
