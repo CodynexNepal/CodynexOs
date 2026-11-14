@@ -10,7 +10,7 @@ import { MarketingService } from '../services/marketing.service';
 import { workspacePreviewService } from '../services/workspace-preview.service';
 import { getRequiredParam } from '../decorators/http.decorator';
 import { STATUS_CODE } from '../constant/statusCode.interface';
-import { MemoryCategory, QaVerdict } from '../constant/enum.constant';
+import { AiProviderName, MemoryCategory, QaVerdict } from '../constant/enum.constant';
 
 export class DomainController {
   constructor(
@@ -810,6 +810,168 @@ export class DomainController {
       });
 
       res.status(STATUS_CODE.OK).json({ success: true, data: saved });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  listAiProviders = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.listProviders();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  saveAiProvider = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const provider = req.body.provider as AiProviderName;
+      await this.modelRouter.saveProviderCredentials(provider, {
+        apiKey: req.body.apiKey,
+        accountId: req.body.accountId,
+        apiToken: req.body.apiToken,
+        baseUrl: req.body.baseUrl,
+      });
+
+      if (req.user?.userId) {
+        await this.auditService.log({
+          actorType: 'USER',
+          actorId: req.user.userId,
+          action: 'AI_PROVIDER_CREDENTIALS_UPDATED',
+          resourceType: 'ai_provider',
+          resourceId: provider,
+          metadata: { provider },
+        });
+      }
+
+      res.status(STATUS_CODE.OK).json({ success: true, message: `Updated credentials for ${provider}` });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  deleteAiProvider = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id') as AiProviderName;
+      await this.modelRouter.removeProviderCredentials(id);
+
+      if (req.user?.userId) {
+        await this.auditService.log({
+          actorType: 'USER',
+          actorId: req.user.userId,
+          action: 'AI_PROVIDER_CREDENTIALS_DELETED',
+          resourceType: 'ai_provider',
+          resourceId: id,
+          metadata: { provider: id },
+        });
+      }
+
+      res.status(STATUS_CODE.OK).json({ success: true, message: `Removed credentials for ${id}` });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  testAiProvider = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id') as AiProviderName;
+      const data = await this.modelRouter.testProvider(id, {
+        apiKey: req.body?.apiKey,
+        accountId: req.body?.accountId,
+        apiToken: req.body?.apiToken,
+        baseUrl: req.body?.baseUrl,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getAiProviderModels = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id') as AiProviderName;
+      const data = await this.modelRouter.getProviderModels(id);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getAllAiModels = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.getAllFreeModels();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getAiQuotas = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.getQuotaStatus();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getAiSettings = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.getGlobalSettings();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateAiSettings = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.updateGlobalSettings(req.body);
+
+      if (req.user?.userId) {
+        await this.auditService.log({
+          actorType: 'USER',
+          actorId: req.user.userId,
+          action: 'AI_GLOBAL_SETTINGS_UPDATED',
+          resourceType: 'ai_settings',
+          resourceId: 'global',
+          metadata: req.body,
+        });
+      }
+
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getAiAgentPreferences = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.getAgentPreferences();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateAiAgentPreference = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.modelRouter.updateAgentPreference(id, req.body);
+
+      if (req.user?.userId) {
+        await this.auditService.log({
+          actorType: 'USER',
+          actorId: req.user.userId,
+          action: 'AI_AGENT_PREFERENCE_UPDATED',
+          resourceType: 'ai_agent_preference',
+          resourceId: id,
+          metadata: req.body,
+        });
+      }
+
+      res.status(STATUS_CODE.OK).json({ success: true, data });
     } catch (err) {
       next(err);
     }

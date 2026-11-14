@@ -3,7 +3,7 @@ import { dotEnvConfig } from '../../configs/envConfig';
 import { AppDataSource } from '../../database/database-source';
 import { AiUsageLogEntity } from '../../entities/ai-usage-log.entity';
 import { BudgetPolicyEntity } from '../../entities/budget-policy.entity';
-import { AiProviderName, AiUsageStatus } from '../../constant/enum.constant';
+import { AiProviderName, AiUsageStatus, ModelEligibilityStatus } from '../../constant/enum.constant';
 import { sha256Hex } from '../../utils/encryption.util';
 import { logger } from '../../utils/logger.util';
 import { resolveRuntimeSecret } from '../../services/runtime-secrets.service';
@@ -17,13 +17,22 @@ import { GeminiAdapter } from '../adapters/gemini.adapter';
 import { GroqAdapter } from '../adapters/groq.adapter';
 import { OllamaAdapter } from '../adapters/ollama.adapter';
 import { OpenAiAdapter } from '../adapters/openai.adapter';
+import { OpenRouterAdapter } from '../adapters/openrouter.adapter';
+import { CloudflareAdapter } from '../adapters/cloudflare.adapter';
+import { HuggingFaceAdapter } from '../adapters/huggingface.adapter';
 import { AiHealthService } from '../services/ai-health.service';
 import { ModelSelectorService } from '../services/model-selector.service';
+import { ProviderManagerService } from '../services/provider-manager.service';
+import { AiSettingsService } from '../services/ai-settings.service';
+import { QuotaManagerService } from '../services/quota-manager.service';
+import { ModelEligibilityValidator } from '../services/model-eligibility.validator';
+import { AgentModelPreference, AiGlobalSettings, AiModelInfo, AiProviderConfig, ProviderQuotaInfo } from '../interfaces/ai-model.interface';
 
 export interface RouteOptions {
   taskId?: string | null;
   userId?: string | null;
   employeeId?: string | null;
+  agentRole?: string | null;
   preferredProvider?: string;
   preferredModel?: string;
   fallbackProvider?: string | null;
@@ -49,14 +58,12 @@ export class ModelRouterService {
 
   public readonly healthService = new AiHealthService();
   public readonly modelSelector = new ModelSelectorService();
+  public readonly providerManager = new ProviderManagerService();
+  public readonly aiSettingsService = new AiSettingsService();
+  public readonly quotaManager = new QuotaManagerService();
 
   constructor() {
-    this.adapters = new Map<AiProviderName, AiProviderAdapter>([
-      [AiProviderName.OLLAMA, new OllamaAdapter()],
-      [AiProviderName.GEMINI, new GeminiAdapter()],
-      [AiProviderName.GROQ, new GroqAdapter()],
-      [AiProviderName.OPENAI, new OpenAiAdapter()],
-    ]);
+    this.adapters = this.providerManager.getAllAdapters();
 
     for (const provider of this.adapters.keys()) {
       this.circuitBreakers.set(provider, {
@@ -96,8 +103,14 @@ export class ModelRouterService {
   }
 
   public async probeFreeProviders() {
-    const geminiKey = await resolveRuntimeSecret('gemini_api_key');
-    const groqKey = await resolveRuntimeSecret('groq_api_key');
+    const [geminiKey, groqKey, openrouterKey, cfAccount, cfToken, hfKey] = await Promise.all([
+      resolveRuntimeSecret('gemini_api_key'),
+      resolveRuntimeSecret('groq_api_key'),
+      resolveRuntimeSecret('openrouter_api_key'),
+      resolveRuntimeSecret('cloudflare_account_id'),
+      resolveRuntimeSecret('cloudflare_api_token'),
+      resolveRuntimeSecret('huggingface_api_key'),
+    ]);
 
     const geminiResult: { configured: boolean; ok: boolean; detail: string; activeModels: string[] } =
       { configured: Boolean(geminiKey), ok: false, detail: 'Not configured', activeModels: [] };
@@ -157,6 +170,78 @@ export class ModelRouterService {
       }
     }
 
+    const openrouterResult: { configured: boolean; ok: boolean; detail: string; activeModels: string[] } = {
+      configured: Boolean(openrouterKey),
+      ok: false,
+      detail: 'Not configured',
+      activeModels: [],
+    };
+
+    if (openrouterKey) {
+      try {
+        const openrouterAdapter = this.adapters.get(AiProviderName.OPENROUTER) as OpenRouterAdapter;
+        const freeModels = await openrouterAdapter.discoverFreeModels(openrouterKey);
+        openrouterResult.ok = freeModels.length > 0;
+        openrouterResult.activeModels = freeModels.slice(0, 8).map((m) => m.id);
+        openrouterResult.detail = openrouterResult.ok
+          ? `Connected (${freeModels.length} verified free models)`
+          : 'Connected (no free models discovered)';
+      } catch (err) {
+        openrouterResult.detail = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    const cloudflareResult: { configured: boolean; ok: boolean; detail: string; activeModels: string[] } = {
+      configured: Boolean((cfAccount || dotEnvConfig.CLOUDFLARE_ACCOUNT_ID) && (cfToken || dotEnvConfig.CLOUDFLARE_API_TOKEN)),
+      ok: false,
+      detail: 'Not configured',
+      activeModels: [],
+    };
+
+    if (cloudflareResult.configured) {
+      const actId = cfAccount || dotEnvConfig.CLOUDFLARE_ACCOUNT_ID;
+      const tok = cfToken || dotEnvConfig.CLOUDFLARE_API_TOKEN;
+      try {
+        const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(actId)}/ai/models/search?task=Text%20Generation`, {
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+        if (res.ok) {
+          const body = (await res.json()) as { result?: Array<{ id?: string }> };
+          cloudflareResult.ok = true;
+          cloudflareResult.activeModels = (body.result ?? []).slice(0, 6).map((m) => m.id || '');
+          cloudflareResult.detail = `Connected (${cloudflareResult.activeModels.length} edge models)`;
+        } else {
+          cloudflareResult.detail = `HTTP ${res.status}`;
+        }
+      } catch (err) {
+        cloudflareResult.detail = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    const huggingfaceResult: { configured: boolean; ok: boolean; detail: string; activeModels: string[] } = {
+      configured: Boolean(hfKey),
+      ok: false,
+      detail: 'Not configured',
+      activeModels: [],
+    };
+
+    if (hfKey) {
+      try {
+        const res = await fetch('https://huggingface.co/api/whoami-v2', {
+          headers: { Authorization: `Bearer ${hfKey}` },
+        });
+        if (res.ok) {
+          huggingfaceResult.ok = true;
+          huggingfaceResult.activeModels = ['meta-llama/Llama-3.2-3B-Instruct', 'mistralai/Mistral-7B-Instruct-v0.3'];
+          huggingfaceResult.detail = 'Connected to Serverless Inference';
+        } else {
+          huggingfaceResult.detail = `HTTP ${res.status}`;
+        }
+      } catch (err) {
+        huggingfaceResult.detail = err instanceof Error ? err.message : String(err);
+      }
+    }
+
     const ollamaSnap = await this.healthService.checkOllama();
     const ollamaResult = {
       configured: ollamaSnap.enabled,
@@ -167,8 +252,69 @@ export class ModelRouterService {
       activeModels: ollamaSnap.installedModels,
     };
 
-    return { gemini: geminiResult, groq: groqResult, ollama: ollamaResult };
+    return {
+      gemini: geminiResult,
+      groq: groqResult,
+      ollama: ollamaResult,
+      openrouter: openrouterResult,
+      cloudflare: cloudflareResult,
+      huggingface: huggingfaceResult,
+    };
   }
+
+  // --- Multi-Provider Management Facades ---
+
+  public async listProviders(): Promise<AiProviderConfig[]> {
+    return this.providerManager.listProviders();
+  }
+
+  public async testProvider(
+    provider: AiProviderName,
+    creds?: { apiKey?: string; accountId?: string; apiToken?: string; baseUrl?: string },
+  ) {
+    return this.providerManager.testProviderConnection(provider, creds);
+  }
+
+  public async getProviderModels(provider: AiProviderName): Promise<AiModelInfo[]> {
+    return this.providerManager.getProviderModels(provider);
+  }
+
+  public async getAllFreeModels(): Promise<AiModelInfo[]> {
+    return this.providerManager.getAllFreeModels();
+  }
+
+  public async getGlobalSettings(): Promise<AiGlobalSettings> {
+    return this.aiSettingsService.getGlobalSettings();
+  }
+
+  public async updateGlobalSettings(patch: Partial<AiGlobalSettings>): Promise<AiGlobalSettings> {
+    return this.aiSettingsService.updateGlobalSettings(patch);
+  }
+
+  public async getAgentPreferences(): Promise<AgentModelPreference[]> {
+    return this.aiSettingsService.getAgentPreferences();
+  }
+
+  public async updateAgentPreference(agentRole: string, patch: Partial<AgentModelPreference>): Promise<AgentModelPreference> {
+    return this.aiSettingsService.updateAgentPreference(agentRole, patch);
+  }
+
+  public async saveProviderCredentials(
+    provider: AiProviderName,
+    creds: { apiKey?: string; accountId?: string; apiToken?: string; baseUrl?: string },
+  ): Promise<boolean> {
+    return this.providerManager.saveProviderCredentials(provider, creds);
+  }
+
+  public async removeProviderCredentials(provider: AiProviderName): Promise<boolean> {
+    return this.providerManager.removeProviderCredentials(provider);
+  }
+
+  public async getQuotaStatus(): Promise<ProviderQuotaInfo[]> {
+    return this.quotaManager.getQuotaStatus();
+  }
+
+  // --- Private Helpers ---
 
   private async getGlobalPolicy(): Promise<BudgetPolicyEntity | null> {
     if (!AppDataSource.isInitialized) return null;
@@ -353,6 +499,8 @@ export class ModelRouterService {
     });
   }
 
+  // --- Central AI Completion Router ---
+
   async complete(req: AiCompletionRequest, opts: RouteOptions = {}): Promise<AiCompletionResponse> {
     const requestId = crypto.randomUUID();
     const canCache = !req.tools?.length && !req.stream && !req.messages?.length;
@@ -373,10 +521,16 @@ export class ModelRouterService {
       }
     }
 
-    const policy = await this.getGlobalPolicy();
-    const maxConcurrent = policy?.maxConcurrentRequests ?? 3;
-    const allowPaid = Boolean(policy?.allowPaidProviders);
-    const globalDailyLimit = policy?.dailyTokenLimit ?? 500000;
+    const [policy, globalSettings, agentPreferences] = await Promise.all([
+      this.getGlobalPolicy(),
+      this.aiSettingsService.getGlobalSettings(),
+      this.aiSettingsService.getAgentPreferences(),
+    ]);
+
+    const freeOnlyMode = dotEnvConfig.AI_FREE_ONLY && globalSettings.freeOnlyMode;
+    const allowPaid = Boolean(policy?.allowPaidProviders || globalSettings.allowPaidProviders) && !freeOnlyMode;
+    const maxConcurrent = globalSettings.maxConcurrentRequests ?? policy?.maxConcurrentRequests ?? 4;
+    const globalDailyLimit = policy?.dailyTokenLimit ?? globalSettings.dailyTokenLimit ?? 500000;
 
     // Cloud token quota check (local Ollama has no external provider token quota)
     const [globalCloudUsedToday, empCloudUsedToday, userCloudUsedToday] = await Promise.all([
@@ -394,6 +548,20 @@ export class ModelRouterService {
       Boolean(opts.employeeId && opts.employeeDailyTokenBudget && empCloudUsedToday >= opts.employeeDailyTokenBudget) ||
       Boolean(opts.userId && opts.userDailyTokenBudget && userCloudUsedToday >= opts.userDailyTokenBudget);
 
+    // Agent-specific preferred provider lookup
+    let agentPref = opts.agentRole
+      ? agentPreferences.find((a) => a.agentRole.toLowerCase() === opts.agentRole!.toLowerCase())
+      : undefined;
+
+    if (!agentPref && opts.taskType) {
+      agentPref = agentPreferences.find((a) => a.agentRole.toLowerCase() === opts.taskType!.toLowerCase());
+    }
+
+    const preferredProvider = opts.preferredProvider || agentPref?.preferredProvider;
+    const preferredModel = opts.preferredModel || agentPref?.preferredModel || req.model;
+    const fallbackProvider = opts.fallbackProvider || agentPref?.fallbackProvider;
+    const fallbackModel = opts.fallbackModel || agentPref?.fallbackModel;
+
     const candidateOrder: Array<{ provider: AiProviderName; model?: string }> = [];
     const addCandidate = (p?: string | null, m?: string | null) => {
       if (!p) return;
@@ -403,22 +571,39 @@ export class ModelRouterService {
       }
     };
 
-    // Priority 1: Ollama (local primary)
-    addCandidate(
-      AiProviderName.OLLAMA,
-      opts.preferredProvider === AiProviderName.OLLAMA
-        ? opts.preferredModel || req.model
-        : undefined,
-    );
-    // Priority 2: Gemini (or explicit preferred cloud provider if non-ollama)
-    if (opts.preferredProvider && opts.preferredProvider !== AiProviderName.OLLAMA) {
-      addCandidate(opts.preferredProvider, opts.preferredModel || req.model);
+    // 1. Preferred provider (agent preference or caller preference)
+    if (preferredProvider) {
+      addCandidate(preferredProvider, preferredModel);
+    } else {
+      addCandidate(AiProviderName.OLLAMA);
     }
-    addCandidate(AiProviderName.GEMINI);
-    // Priority 3: Groq
-    addCandidate(AiProviderName.GROQ, opts.fallbackProvider === AiProviderName.GROQ ? opts.fallbackModel : undefined);
-    // Priority 4: OpenAI (only if budget policy allows paid providers)
-    if (allowPaid) {
+
+    // 2. Explicit fallback provider (if specified)
+    if (fallbackProvider) {
+      addCandidate(fallbackProvider, fallbackModel);
+    }
+
+    // 3. Ollama (local primary) if not already first
+    addCandidate(AiProviderName.OLLAMA);
+
+    // 4. Default priority order across verified free providers
+    const priorityList = globalSettings.providerPriority || [
+      AiProviderName.OLLAMA,
+      AiProviderName.GEMINI,
+      AiProviderName.GROQ,
+      AiProviderName.OPENROUTER,
+      AiProviderName.CLOUDFLARE,
+      AiProviderName.HUGGINGFACE,
+    ];
+
+    for (const p of priorityList) {
+      if (p !== AiProviderName.OPENAI || allowPaid) {
+        addCandidate(p);
+      }
+    }
+
+    // 5. OpenAI only if paid providers are explicitly allowed AND free-only mode is OFF
+    if (allowPaid && !freeOnlyMode) {
       addCandidate(AiProviderName.OPENAI);
     }
 
@@ -431,16 +616,6 @@ export class ModelRouterService {
       for (const candidate of candidateOrder) {
         const adapter = this.adapters.get(candidate.provider);
         if (!adapter) continue;
-        if (adapter.isPaid && !allowPaid) continue;
-        if (candidate.provider !== AiProviderName.OLLAMA && cloudQuotaExhausted) {
-          errors.push(`${candidate.provider}: Daily cloud token budget reached`);
-          sawQuotaOrRateLimit = true;
-          continue;
-        }
-        if (this.isCircuitOpen(candidate.provider)) {
-          errors.push(`${candidate.provider}: Circuit breaker OPEN (cooldown active)`);
-          continue;
-        }
 
         let chosenModel = candidate.model || req.model;
         if (candidate.provider === AiProviderName.OLLAMA && !chosenModel) {
@@ -451,6 +626,42 @@ export class ModelRouterService {
             preferredModel: dotEnvConfig.OLLAMA_MODEL,
           });
           chosenModel = selected.model;
+        }
+
+        if (!chosenModel) {
+          if (candidate.provider === AiProviderName.GEMINI) chosenModel = dotEnvConfig.GEMINI_MODEL || 'gemini-3.8-flash';
+          if (candidate.provider === AiProviderName.GROQ) chosenModel = dotEnvConfig.GROQ_MODEL || 'llama-3.3-70b-versatile';
+          if (candidate.provider === AiProviderName.OPENROUTER) chosenModel = dotEnvConfig.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
+          if (candidate.provider === AiProviderName.CLOUDFLARE) chosenModel = dotEnvConfig.CLOUDFLARE_MODEL || '@cf/meta/llama-3.1-8b-instruct';
+          if (candidate.provider === AiProviderName.HUGGINGFACE) chosenModel = dotEnvConfig.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
+          if (candidate.provider === AiProviderName.OPENAI) chosenModel = dotEnvConfig.OPENAI_MODEL || 'gpt-4o-mini';
+        }
+
+        // STRICT FREE-ONLY VALIDATOR: Prevent execution of paid or unknown pricing models
+        const validation = ModelEligibilityValidator.validate(candidate.provider, chosenModel || 'default', {
+          freeOnlyMode,
+          allowPaidProviders: allowPaid,
+        });
+
+        if (!validation.eligible) {
+          errors.push(`${candidate.provider}: ${validation.reason}`);
+          continue;
+        }
+
+        if (adapter.isPaid && !allowPaid) {
+          errors.push(`${candidate.provider}: Paid providers blocked by $0 policy`);
+          continue;
+        }
+
+        if (candidate.provider !== AiProviderName.OLLAMA && cloudQuotaExhausted) {
+          errors.push(`${candidate.provider}: Daily cloud token budget reached`);
+          sawQuotaOrRateLimit = true;
+          continue;
+        }
+
+        if (this.isCircuitOpen(candidate.provider)) {
+          errors.push(`${candidate.provider}: Circuit breaker OPEN (cooldown active)`);
+          continue;
         }
 
         try {
@@ -501,7 +712,6 @@ export class ModelRouterService {
               continue;
             }
             if (err.code === 'NOT_CONFIGURED') {
-              // Ollama unavailable or key not configured: record failure only if unavailable server
               if (candidate.provider === AiProviderName.OLLAMA && dotEnvConfig.OLLAMA_ENABLED) {
                 this.recordFailure(candidate.provider, err);
                 errors.push(`${err.provider}: ${err.message}`);
@@ -559,16 +769,16 @@ export class ModelRouterService {
       throw new AiProviderError(
         AiProviderName.OLLAMA,
         'NOT_CONFIGURED',
-        'No AI provider is available. Start Ollama locally or configure GEMINI_API_KEY / GROQ_API_KEY.',
+        'No free AI provider is currently available. Start Ollama locally or configure GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, or CLOUDFLARE_API_TOKEN.',
       );
     }
 
     throw new AiProviderError(
       AiProviderName.OLLAMA,
       sawQuotaOrRateLimit ? 'QUOTA_EXHAUSTED' : 'PROVIDER_ERROR',
-      allowPaid
-        ? `No configured AI provider succeeded: ${errors.join(' | ')}`
-        : `No configured free-tier AI provider succeeded: ${errors.join(' | ')}`,
+      freeOnlyMode
+        ? `No free AI provider succeeded under strict FREE-ONLY mode: ${errors.join(' | ')}`
+        : `No configured AI provider succeeded: ${errors.join(' | ')}`,
     );
   }
 }

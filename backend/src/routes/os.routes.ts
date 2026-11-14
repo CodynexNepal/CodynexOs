@@ -362,6 +362,19 @@ export function createOsRouter(): Router {
     domainController.updateBudget,
   );
 
+  // Multi-Provider Free AI Integration & Management
+  router.get('/ai/providers', domainController.listAiProviders);
+  router.post('/ai/providers', requireRoles(UserRole.CEO), domainController.saveAiProvider);
+  router.delete('/ai/providers/:id', requireRoles(UserRole.CEO), domainController.deleteAiProvider);
+  router.post('/ai/providers/:id/test', domainController.testAiProvider);
+  router.get('/ai/providers/:id/models', domainController.getAiProviderModels);
+  router.get('/ai/models', domainController.getAllAiModels);
+  router.get('/ai/quotas', domainController.getAiQuotas);
+  router.get('/ai/settings', domainController.getAiSettings);
+  router.patch('/ai/settings', requireRoles(UserRole.CEO), domainController.updateAiSettings);
+  router.get('/ai/agents/preferences', domainController.getAiAgentPreferences);
+  router.patch('/ai/agents/:id/preferences', requireRoles(UserRole.CEO), domainController.updateAiAgentPreference);
+
   router.get('/notifications', osController.notifications);
   router.post('/notifications/test', osController.sendTestNotification);
   router.patch(

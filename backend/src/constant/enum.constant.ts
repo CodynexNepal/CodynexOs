@@ -47,6 +47,17 @@ export enum AiProviderName {
   GROQ = 'groq',
   OLLAMA = 'ollama',
   OPENAI = 'openai',
+  OPENROUTER = 'openrouter',
+  CLOUDFLARE = 'cloudflare',
+  HUGGINGFACE = 'huggingface',
+}
+
+export enum ModelEligibilityStatus {
+  FREE_VERIFIED = 'FREE_VERIFIED',
+  PAID = 'PAID',
+  UNKNOWN = 'UNKNOWN',
+  QUOTA_EXHAUSTED = 'QUOTA_EXHAUSTED',
+  UNAVAILABLE = 'UNAVAILABLE',
 }
 
 export enum AiUsageStatus {

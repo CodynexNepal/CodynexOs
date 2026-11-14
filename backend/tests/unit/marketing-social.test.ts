@@ -19,7 +19,51 @@ describe('Digital Marketing, AI Content Creator & Official Social Dispatch', () 
   } as any;
 
   const mockModelRouter = {
-    complete: vi.fn().mockRejectedValue(new Error('AI offline, use deterministic engine')),
+    complete: vi.fn().mockImplementation(async (req) => {
+      const prompt = req.userPrompt || '';
+      const isTech = /CodyNex OS 2\.0/i.test(prompt);
+      return {
+        content: JSON.stringify({
+          tiktok: {
+            hook: isTech ? '🚀 CodyNex OS 2.0 has officially arrived!' : '✨ तिहार तथा दीपावलीको हार्दिक शुभकामना! 🪔',
+            scenes: [
+              { scene: 1, visual: 'Intro visual', audio: 'Trending Nepali acoustic sitar + modern lo-fi chill beat', caption: 'Intro scene' },
+              { scene: 2, visual: 'Product showcase', audio: 'Beat drop', caption: 'Highlights' },
+              { scene: 3, visual: 'Call to action', audio: 'Sign-off', caption: 'Link in bio!' },
+            ],
+            caption: isTech
+              ? 'Announcing CodyNex OS 2.0 with real-time preview studio! #CodyNex #Tech'
+              : 'दीपावलीको झिलिमिलीसँगै तपाईंको जीवन पनि उज्यालो बनोस्! #HappyTihar #Tihar2026',
+            audioCue: 'Trending Nepali Acoustic Lo-Fi Beat',
+            hashtags: ['#HappyTihar', '#Tihar2026'],
+          },
+          facebook: {
+            headline: isTech ? '🚀 Introducing CodyNex OS 2.0' : '🪔 तिहार तथा दीपावलीको पावन अवसरमा हार्दिक शुभकामना!',
+            postText: isTech
+              ? 'We are thrilled to announce CodyNex OS 2.0 release with real-time live preview studio.'
+              : 'सयपत्रीको सुगन्ध, झिलिमिली बत्तीको उज्यालो... TIHAR2026',
+            callToAction: 'Visit www.alizawears.com or WhatsApp us today!',
+            engagementQuestion: 'What are your thoughts on this?',
+            suggestedVisual: 'Product banner image',
+            hashtags: ['#HappyTihar', '#Tihar2026'],
+          },
+          whatsapp: {
+            broadcastMessage: isTech
+              ? '*Namaste!* 🚀 Announce CodyNex OS 2.0 release with real-time live preview studio.'
+              : '*Namaste from Aliza Wears!* 🪔✨ Wishing you a luminous Tihar!',
+            bulletPoints: ['🌟 Feature highlight', '⚡ Fast delivery', '📲 Instant WhatsApp support'],
+            ctaLink: 'https://alizawears.com',
+            statusTeaser: isTech ? 'CodyNex OS 2.0 is live!' : 'Happy Tihar from Aliza Wears!',
+          },
+          instagram: {
+            caption: 'Exclusive update! Link in bio.',
+            visualDirection: 'Clean studio lighting showcase',
+            storySticker: 'Rate this look 🔥',
+            hashtags: ['#HappyTihar'],
+          },
+        }),
+      };
+    }),
   } as any;
 
   const mockAudit = {
@@ -154,5 +198,19 @@ describe('Digital Marketing, AI Content Creator & Official Social Dispatch', () 
 
     const deleted = await service.deleteSocialAccount('custom-tt-1');
     expect(deleted).toBe(true);
+  });
+
+  it('dynamically generates content matching custom CEO prompt without rigid festive assumptions', async () => {
+    const res = await service.generateContent({
+      occasionKey: 'CUSTOM',
+      customPrompt: 'Announce CodyNex OS 2.0 release with real-time live preview studio',
+      channels: ['TIKTOK', 'FACEBOOK', 'WHATSAPP'],
+      businessName: 'CodyNex Nepal',
+    });
+
+    expect(res.content.tiktok?.hook).toContain('CodyNex OS 2.0');
+    expect(res.content.facebook?.postText).toContain('CodyNex OS 2.0');
+    expect(res.content.facebook?.postText).not.toContain('सयपत्री');
+    expect(res.content.whatsapp?.broadcastMessage).toContain('CodyNex OS 2.0');
   });
 });

@@ -31,6 +31,9 @@ export class AiHealthService {
       AiProviderName.OLLAMA,
       AiProviderName.GEMINI,
       AiProviderName.GROQ,
+      AiProviderName.OPENROUTER,
+      AiProviderName.CLOUDFLARE,
+      AiProviderName.HUGGINGFACE,
       AiProviderName.OPENAI,
     ]) {
       this.telemetry.set(provider, {
@@ -143,16 +146,36 @@ export class AiHealthService {
   }
 
   async getFullHealthReport() {
-    const [ollama, geminiKey, groqKey, openaiKey] = await Promise.all([
+    const [
+      ollama,
+      geminiKey,
+      groqKey,
+      openrouterKey,
+      cloudflareToken,
+      cloudflareAccount,
+      huggingfaceKey,
+      openaiKey,
+    ] = await Promise.all([
       this.checkOllama(),
       resolveRuntimeSecret('gemini_api_key'),
       resolveRuntimeSecret('groq_api_key'),
+      resolveRuntimeSecret('openrouter_api_key'),
+      resolveRuntimeSecret('cloudflare_api_token'),
+      resolveRuntimeSecret('cloudflare_account_id'),
+      resolveRuntimeSecret('huggingface_api_key'),
       resolveRuntimeSecret('openai_api_key'),
     ]);
 
     const telemetry = this.getTelemetrySnapshot();
-    const overallStatus =
-      ollama.available || Boolean(geminiKey) || Boolean(groqKey) ? 'healthy' : 'degraded';
+    const hasAnyFreeConfigured =
+      ollama.available ||
+      Boolean(geminiKey) ||
+      Boolean(groqKey) ||
+      Boolean(openrouterKey) ||
+      Boolean(cloudflareToken && cloudflareAccount) ||
+      Boolean(huggingfaceKey);
+
+    const overallStatus = hasAnyFreeConfigured ? 'healthy' : 'degraded';
 
     return {
       status: overallStatus,
@@ -161,12 +184,18 @@ export class AiHealthService {
         AiProviderName.OLLAMA,
         AiProviderName.GEMINI,
         AiProviderName.GROQ,
+        AiProviderName.OPENROUTER,
+        AiProviderName.CLOUDFLARE,
+        AiProviderName.HUGGINGFACE,
         AiProviderName.OPENAI,
       ],
       ollama,
       cloudProviders: {
         gemini: { configured: Boolean(geminiKey) },
         groq: { configured: Boolean(groqKey) },
+        openrouter: { configured: Boolean(openrouterKey) },
+        cloudflare: { configured: Boolean(cloudflareToken && cloudflareAccount) },
+        huggingface: { configured: Boolean(huggingfaceKey) },
         openai: { configured: Boolean(openaiKey) },
       },
       telemetry,
