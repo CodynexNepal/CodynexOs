@@ -122,9 +122,11 @@ export class BrowserService {
     const cleanUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
 
     try {
-      await page.goto(cleanUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      // Use 'commit' first to confirm response headers/document start, then soft-wait for domcontentloaded
+      await page.goto(cleanUrl, { waitUntil: 'commit', timeout: 30000 });
+      await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
       state.url = page.url();
-      state.title = await page.title();
+      state.title = await page.title().catch(() => '');
       state.status = 'IDLE';
 
       const screenshot = await this.captureScreenshot(page, sessionId);
@@ -147,6 +149,25 @@ export class BrowserService {
       return state;
     } catch (err: any) {
       state.status = 'IDLE';
+      // Gracefully handle net::ERR_ABORTED if page has already navigated to target or redirected
+      if (err?.message?.includes('ERR_ABORTED')) {
+        const curUrl = page.url();
+        if (curUrl && curUrl !== 'about:blank') {
+          state.url = curUrl;
+          state.title = await page.title().catch(() => '');
+          const screenshot = await this.captureScreenshot(page, sessionId);
+          state.lastScreenshot = screenshot;
+          socketServer.emit('browser:navigation', {
+            sessionId,
+            url: state.url,
+            title: state.title,
+            screenshot,
+            timestamp: new Date().toISOString(),
+          });
+          return state;
+        }
+      }
+
       socketServer.emit('browser:error', {
         sessionId,
         error: err?.message || 'Navigation failed',

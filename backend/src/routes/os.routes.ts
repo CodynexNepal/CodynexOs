@@ -438,6 +438,7 @@ export function createOsRouter(): Router {
   router.post('/terminal/sessions/:sessionId/execute', osController.terminalExecute);
   router.post('/terminal/executions/:executionId/cancel', osController.terminalCancel);
 
+  router.get('/agent/sessions/:sessionId', osController.agentGetSession);
   router.post('/agent/sessions/:sessionId/pause', osController.agentPause);
   router.post('/agent/sessions/:sessionId/resume', osController.agentResume);
   router.post('/agent/sessions/:sessionId/cancel', osController.agentCancel);

@@ -413,6 +413,8 @@ export const codynexApi = {
     cancel: (executionId: string) => api.post(`/terminal/executions/${executionId}/cancel`),
   },
   autonomousAgent: {
+    getSession: (sessionId: string) =>
+      api.get<{ success: boolean; data: Record<string, unknown> | null }>(`/agent/sessions/${sessionId}`),
     run: (body: {
       sessionId?: string;
       taskId?: string;

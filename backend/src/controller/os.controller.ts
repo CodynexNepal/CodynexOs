@@ -539,6 +539,16 @@ export class OsController {
     }
   };
 
+  agentGetSession = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const session = agentExecutionService.getSession(sessionId);
+      res.status(STATUS_CODE.OK).json({ success: true, data: session });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   agentPause = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const sessionId = getRequiredParam(req, 'sessionId');

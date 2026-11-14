@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Activity,
   Code2,
@@ -55,6 +55,53 @@ export function AutonomousComputerConsole({
   const [stepLogs, setStepLogs] = useState<AgentStepLog[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [finalReport, setFinalReport] = useState<string | null>(null);
+
+  // Restore active backend session if user navigated away and returned
+  useEffect(() => {
+    let isMounted = true;
+    const fetchExistingSession = async () => {
+      try {
+        const res = await codynexApi.autonomousAgent.getSession(sessionId);
+        if (res.data?.data && isMounted) {
+          const s = res.data.data as Record<string, unknown>;
+          if (s.status && typeof s.status === "string") {
+            setAgentStatus(
+              s.status as
+                | "IDLE"
+                | "PLANNING"
+                | "RUNNING"
+                | "WAITING"
+                | "PAUSED"
+                | "COMPLETED"
+                | "FAILED"
+                | "CANCELLED"
+            );
+          }
+          if (typeof s.currentStep === "number") setCurrentStep(s.currentStep);
+          if (typeof s.maxSteps === "number") setMaxSteps(s.maxSteps);
+          if (s.finalAnswer) setFinalReport(String(s.finalAnswer));
+          if (Array.isArray(s.steps) && s.steps.length > 0) {
+            setStepLogs(
+              s.steps.map((st: Record<string, unknown>) => ({
+                step: typeof st.stepIndex === "number" ? st.stepIndex : 1,
+                thought: typeof st.thought === "string" ? st.thought : undefined,
+                tool: typeof st.tool === "string" ? st.tool : "unknown",
+                output: st.toolOutput,
+                status: (st.status as "EXECUTING" | "SUCCESS" | "FAILED") || "SUCCESS",
+                timestamp: typeof st.timestamp === "string" ? st.timestamp : new Date().toISOString(),
+              }))
+            );
+          }
+        }
+      } catch {
+        // session not started yet, ignore
+      }
+    };
+    void fetchExistingSession();
+    return () => {
+      isMounted = false;
+    };
+  }, [sessionId]);
 
   // Trigger agent execution loop
   const handleLaunchAgent = async () => {
