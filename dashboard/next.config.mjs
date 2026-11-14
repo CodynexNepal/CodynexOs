@@ -9,6 +9,15 @@ const nextConfig = {
     devtoolSegmentExplorer: false,
     proxyTimeout: 120000,
   },
+  webpack: (config, { dev }) => {
+    if (dev) {
+      // Use in-memory cache in development on Windows to prevent pack.gz ENOENT race conditions
+      config.cache = {
+        type: 'memory',
+      };
+    }
+    return config;
+  },
   async rewrites() {
     const backendApiUrl = process.env.NEXT_BACKEND_API_URL ?? 'http://127.0.0.1:8000/api/v1/codynex';
     const backendOrigin = backendApiUrl.replace(/\/api\/v1\/codynex\/?$/, '');

@@ -144,7 +144,7 @@ export const codynexApi = {
     list: () => api.get("/frontends"),
   },
   qa: {
-    reports: () => api.get("/qa/reports"),
+    reports: () => api.get<{ success: boolean; data: Record<string, unknown>[] }>("/qa/reports"),
     createReport: (body: {
       taskId: string;
       verdict: "PASSED" | "FAILED" | "BLOCKED";
@@ -152,6 +152,13 @@ export const codynexApi = {
       summary: string;
       checksExecuted: Array<{ name: string; status: string; output?: string }>;
     }) => api.post("/qa/reports", body),
+    evaluateReleaseGates: (body?: {
+      owner?: string;
+      name?: string;
+      taskId?: string;
+      previewUrl?: string;
+      expectedDeliverables?: string[];
+    }) => api.post<{ success: boolean; data: Record<string, unknown> }>("/qa/release-gates/run", body || {}),
   },
   marketing: {
     campaigns: (businessId?: string) =>
@@ -390,5 +397,33 @@ export const codynexApi = {
       reason: string;
       metadata?: Record<string, unknown>;
     }) => api.post("/hr/tokens/grant", body),
+  },
+  browser: {
+    getState: (sessionId: string) => api.get(`/browser/sessions/${sessionId}`),
+    navigate: (sessionId: string, url: string) => api.post(`/browser/sessions/${sessionId}/navigate`, { url }),
+    click: (sessionId: string, selector: string) => api.post(`/browser/sessions/${sessionId}/click`, { selector }),
+    type: (sessionId: string, selector: string, text: string) =>
+      api.post(`/browser/sessions/${sessionId}/type`, { selector, text }),
+    takeover: (sessionId: string, enabled: boolean) =>
+      api.post(`/browser/sessions/${sessionId}/takeover`, { enabled }),
+  },
+  terminal: {
+    execute: (sessionId: string, command: string, cwd?: string) =>
+      api.post(`/terminal/sessions/${sessionId}/execute`, { command, cwd }),
+    cancel: (executionId: string) => api.post(`/terminal/executions/${executionId}/cancel`),
+  },
+  autonomousAgent: {
+    run: (body: {
+      sessionId?: string;
+      taskId?: string;
+      instruction: string;
+      roleTitle?: string;
+      owner?: string;
+      repoName?: string;
+      maxSteps?: number;
+    }) => api.post("/agent/sessions/run", body),
+    pause: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/pause`),
+    resume: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/resume`),
+    cancel: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/cancel`),
   },
 };

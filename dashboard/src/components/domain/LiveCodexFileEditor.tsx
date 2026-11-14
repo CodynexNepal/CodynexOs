@@ -59,7 +59,6 @@ interface FileContentState {
 
 export function LiveCodexFileEditor({
   repoId: propRepoId,
-  projectId: _projectId,
   initialFilePath,
   className,
   autoExpand = false,
@@ -406,7 +405,6 @@ export function LiveCodexFileEditor({
     }
 
     // Simple line diff visualization
-    const max = Math.max(orig.length, curr.length);
     const result: Array<{
       type: "ADD" | "DEL" | "SAME";
       lineNumOrig: number | null;
