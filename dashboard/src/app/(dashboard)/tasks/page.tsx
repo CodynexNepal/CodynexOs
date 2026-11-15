@@ -91,8 +91,10 @@ export default function TasksPage() {
               ? {
                   ...t,
                   status: update.status || t.status,
-                  errorMessage: update.error !== undefined ? update.error : t.errorMessage,
                   retryCount: update.retryCount !== undefined ? update.retryCount : t.retryCount,
+                  outputPayload: update.error
+                    ? { ...(t.outputPayload || {}), error: update.error }
+                    : t.outputPayload,
                 }
               : t
           )
@@ -112,6 +114,7 @@ export default function TasksPage() {
             taskId: stepData.taskId!,
             level: "INFO",
             message: `[${stepData.action || "STEP"}] ${stepData.detail || ""}`,
+            metadata: {},
             createdAt: new Date().toISOString(),
           },
         ]);

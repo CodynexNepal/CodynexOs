@@ -234,11 +234,7 @@ export function LiveCompanyFlowVisualizer({
         setLiveEvents((prev) => [evt, ...prev.slice(0, 49)]);
       }
     }
-    if (
-      eventName === "task:updated" ||
-      eventName === "task:step" ||
-      eventName === "project:preview_ready"
-    ) {
+    if (eventName === "task:updated" || eventName === "project:preview_ready") {
       void fetchLiveActivity();
     }
     if (eventName === "task:log" && payload) {
