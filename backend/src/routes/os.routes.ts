@@ -449,7 +449,15 @@ export function createOsRouter(): Router {
   router.post('/agent/sessions/run', osController.agentRunSession);
 
   // --- Release Quality Gates & Delivery Scorecard ---
+  router.get('/qa/release-gates/latest', osController.getLatestReleaseCertificate);
   router.post('/qa/release-gates/run', osController.evaluateReleaseGates);
+
+  // --- Nepali Voice Intelligence System ---
+  router.get('/voice/status', osController.voiceStatus);
+  router.post('/voice/transcribe', osController.voiceTranscribe);
+  router.post('/voice/synthesize', osController.voiceSynthesize);
+  router.post('/voice/directive', osController.voiceDirective);
+  router.post('/voice/approvals/:intentId', osController.voiceConfirmApproval);
 
   return router;
 }

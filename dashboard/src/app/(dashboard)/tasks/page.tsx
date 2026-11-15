@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { CheckSquare, Eye, Plus, RotateCcw, XCircle } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card } from "@/components/ui/Card";
@@ -42,7 +42,12 @@ export default function TasksPage() {
       codynexApi.tasks.list(statusFilter === "ALL" ? undefined : { status: statusFilter }),
     [statusFilter]
   );
-  const pagination = usePagination(data ?? [], 15);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  useEffect(() => {
+    if (data) setTasks(data);
+  }, [data]);
+
+  const pagination = usePagination(tasks, 15);
   const projectsQuery = useApiQuery<ProjectItem[]>(() => codynexApi.projects());
   const deptsQuery = useApiQuery<DepartmentItem[]>(() => codynexApi.departments());
   const empsQuery = useApiQuery<AiEmployeeItem[]>(() => codynexApi.employees());
@@ -60,9 +65,58 @@ export default function TasksPage() {
   const [taskType, setTaskType] = useState("code");
   const [creating, setCreating] = useState(false);
 
+  // Throttled refetch to protect backend from rapid polling
+  const lastRefetchRef = useRef<number>(0);
+  const throttledRefetch = useCallback(() => {
+    const now = Date.now();
+    if (now - lastRefetchRef.current > 5000) {
+      lastRefetchRef.current = now;
+      refetch();
+    }
+  }, [refetch]);
+
+  // WebSocket Live Updates — pure websocket state synchronization without HTTP hammering
   useDomainSocket((eventName, payload) => {
-    refetch();
-    if (eventName === "task:log" && payload && typeof payload === "object") {
+    if (eventName === "task:updated" && payload) {
+      const update = payload as {
+        taskId?: string;
+        status?: TaskItem["status"];
+        error?: string;
+        retryCount?: number;
+      };
+      if (update.taskId) {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === update.taskId
+              ? {
+                  ...t,
+                  status: update.status || t.status,
+                  errorMessage: update.error !== undefined ? update.error : t.errorMessage,
+                  retryCount: update.retryCount !== undefined ? update.retryCount : t.retryCount,
+                }
+              : t
+          )
+        );
+        // Only throttle refetch when task reaches a final state
+        if (update.status === "COMPLETED" || update.status === "FAILED") {
+          throttledRefetch();
+        }
+      }
+    } else if (eventName === "task:step" && payload) {
+      const stepData = payload as { taskId?: string; action?: string; detail?: string };
+      if (stepData.taskId && selectedTask && stepData.taskId === selectedTask.id) {
+        setLogs((prev) => [
+          ...prev,
+          {
+            id: `step_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            taskId: stepData.taskId!,
+            level: "INFO",
+            message: `[${stepData.action || "STEP"}] ${stepData.detail || ""}`,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      }
+    } else if (eventName === "task:log" && payload && typeof payload === "object") {
       const logItem = payload as TaskLogItem;
       if (selectedTask && logItem.taskId === selectedTask.id) {
         setLogs((prev) => {
@@ -75,8 +129,8 @@ export default function TasksPage() {
 
   // Keep selectedTask synchronized with live task updates
   useEffect(() => {
-    if (selectedTask && data) {
-      const updated = data.find((t) => t.id === selectedTask.id);
+    if (selectedTask && tasks.length > 0) {
+      const updated = tasks.find((t) => t.id === selectedTask.id);
       if (
         updated &&
         (updated.status !== selectedTask.status ||
@@ -86,7 +140,7 @@ export default function TasksPage() {
         setSelectedTask(updated);
       }
     }
-  }, [data, selectedTask]);
+  }, [tasks, selectedTask]);
 
   const openLogs = async (task: TaskItem) => {
     setSelectedTask(task);
@@ -178,7 +232,7 @@ export default function TasksPage() {
 
         {loading ? (
           <TableSkeleton rows={8} cols={6} />
-        ) : !data || data.length === 0 ? (
+        ) : !tasks || tasks.length === 0 ? (
           <EmptyState
             icon={CheckSquare}
             title="No matching tasks"

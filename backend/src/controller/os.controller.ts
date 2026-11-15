@@ -20,6 +20,7 @@ import { browserService } from '../services/browser.service';
 import { terminalService } from '../services/terminal.service';
 import { agentExecutionService } from '../services/agent-execution.service';
 import { verificationGateService } from '../services/verification-gate.service';
+import { voiceService } from '../services/voice.service';
 
 export class OsController {
   constructor(
@@ -657,6 +658,24 @@ export class OsController {
     }
   };
 
+  getLatestReleaseCertificate = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { owner = 'organization', name = 'workspace', taskId } = req.query as {
+        owner?: string;
+        name?: string;
+        taskId?: string;
+      };
+      const certificate = await verificationGateService.getLatestCertificate({
+        owner,
+        name,
+        taskId,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data: certificate });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   evaluateReleaseGates = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { owner = 'organization', name = 'workspace', taskId, previewUrl, expectedDeliverables } = req.body;
@@ -664,11 +683,124 @@ export class OsController {
         owner,
         name,
         taskId,
-        reviewerEmployeeId: req.user?.userId,
+        reviewerEmployeeId: req.body?.reviewerEmployeeId,
         previewUrl,
         expectedDeliverables,
       });
       res.status(STATUS_CODE.OK).json({ success: true, data: certificate });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  // --- Nepali Voice Intelligence API ---
+
+  voiceTranscribe = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { audioBase64, format = 'webm' } = req.body;
+      if (!audioBase64) {
+        throw new ApiError(STATUS_CODE.BAD_REQUEST, 'Missing audioBase64 payload');
+      }
+      const result = await voiceService.transcribeAudio(audioBase64, format);
+      res.status(STATUS_CODE.OK).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  voiceSynthesize = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { text, voice } = req.body;
+      if (!text) {
+        throw new ApiError(STATUS_CODE.BAD_REQUEST, 'Missing text payload');
+      }
+      const result = await voiceService.synthesizeSpeech(text, voice);
+      res.status(STATUS_CODE.OK).json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  voiceDirective = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { nepaliText, activeSessionId, activeWorkspace } = req.body;
+      if (!nepaliText) {
+        throw new ApiError(STATUS_CODE.BAD_REQUEST, 'Missing nepaliText payload');
+      }
+      const intent = await voiceService.processNepaliVoiceDirective(nepaliText, {
+        activeSessionId,
+        activeWorkspace,
+        userId: (req as any).user?.id,
+      });
+
+      // Synthesize audio response for the voice assistant reply
+      let audioResult: { audioBase64: string; mimeType: string } | null = null;
+      try {
+        audioResult = await voiceService.synthesizeSpeech(intent.nepaliVoiceReply);
+      } catch {
+        // Voice synthesis optional fallback
+      }
+
+      // If auto-approved (Level 1), execute immediately
+      let executionResult: { executionSessionId?: string } | null = null;
+      if (!intent.requiresConfirmation) {
+        executionResult = await voiceService.executeAuthorizedIntent(intent.intentId, true);
+      }
+
+      res.status(STATUS_CODE.OK).json({
+        success: true,
+        data: {
+          intent,
+          audioBase64: audioResult?.audioBase64,
+          mimeType: audioResult?.mimeType || 'audio/mpeg',
+          executionSessionId: executionResult?.executionSessionId,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  voiceConfirmApproval = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const intentId = String(req.params.intentId || '');
+      if (!intentId) {
+        throw new ApiError(STATUS_CODE.BAD_REQUEST, 'Missing intentId parameter');
+      }
+      const { confirmed } = req.body;
+      const result = await voiceService.executeAuthorizedIntent(intentId, Boolean(confirmed));
+
+      let audioResult: { audioBase64: string; mimeType: string } | null = null;
+      try {
+        audioResult = await voiceService.synthesizeSpeech(result.voiceReply);
+      } catch {
+        // Voice synthesis optional fallback
+      }
+
+      res.status(STATUS_CODE.OK).json({
+        success: true,
+        data: {
+          ...result,
+          audioBase64: audioResult?.audioBase64,
+          mimeType: audioResult?.mimeType || 'audio/mpeg',
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  voiceStatus = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isReady = await voiceService.pingVoiceEngine();
+      res.status(STATUS_CODE.OK).json({
+        success: true,
+        data: {
+          status: isReady ? 'ONLINE' : 'OFFLINE',
+          voice: 'ne-NP-SagarNeural (Native Kathmandu Male)',
+          stt: 'faster-whisper int8 (Nepali Devanagari & Code-switching)',
+        },
+      });
     } catch (err) {
       next(err);
     }

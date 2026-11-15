@@ -832,6 +832,7 @@ export class DomainController {
         accountId: req.body.accountId,
         apiToken: req.body.apiToken,
         baseUrl: req.body.baseUrl,
+        model: req.body.model,
       });
 
       if (req.user?.userId) {

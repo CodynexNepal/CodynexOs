@@ -56,7 +56,7 @@ export function LiveBrowserViewport({
 
   const [loading, setLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [scaleMode, setScaleMode] = useState<"FIT_WIDTH" | "CONTAIN" | "ACTUAL">("FIT_WIDTH");
+  const [scaleMode, setScaleMode] = useState<"FIT_HEIGHT" | "FIT_WIDTH" | "CONTAIN">("FIT_HEIGHT");
   const [showConsole, setShowConsole] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -228,8 +228,8 @@ export function LiveBrowserViewport({
   return (
     <div
       className={cn(
-        "flex flex-col border border-[#30363d] bg-[#0d1117] text-[#c9d1d9] shadow-2xl overflow-hidden font-sans",
-        isExpanded ? "fixed inset-0 z-50 rounded-none w-screen h-screen bg-[#010409]" : "w-full rounded-xl",
+        "flex flex-col border border-[#30363d] bg-[#0d1117] text-[#c9d1d9] shadow-2xl overflow-hidden font-sans w-full h-full flex-1",
+        isExpanded ? "fixed inset-0 z-50 rounded-none w-screen h-screen bg-[#010409]" : "rounded-xl",
         className
       )}
     >
@@ -306,20 +306,30 @@ export function LiveBrowserViewport({
             )}
           </button>
 
-          {/* Fit Width / Contain Scale Toggle */}
+          {/* Fit Height (100%) / Width / Fit Toggle */}
           <button
             type="button"
-            onClick={() => setScaleMode((prev) => (prev === "FIT_WIDTH" ? "CONTAIN" : "FIT_WIDTH"))}
+            onClick={() =>
+              setScaleMode((prev) =>
+                prev === "FIT_HEIGHT" ? "FIT_WIDTH" : prev === "FIT_WIDTH" ? "CONTAIN" : "FIT_HEIGHT"
+              )
+            }
             className={cn(
               "flex items-center gap-1 rounded border border-[#30363d] px-2 py-1 text-xs font-semibold transition-colors",
-              scaleMode === "FIT_WIDTH"
+              scaleMode === "FIT_HEIGHT"
                 ? "bg-[#21262d] text-[#58a6ff] border-[#58a6ff]/40"
                 : "bg-[#0d1117] text-[#8b949e] hover:text-white"
             )}
-            title="Toggle between Full Width (100% Screen) and Contained View"
+            title="Toggle View Scale: 100% Height, 100% Width, or Fit View"
           >
             <Monitor className="h-3 w-3" />
-            <span className="hidden sm:inline">{scaleMode === "FIT_WIDTH" ? "Full Width (100%)" : "Fit View"}</span>
+            <span className="hidden sm:inline">
+              {scaleMode === "FIT_HEIGHT"
+                ? "Height 100%"
+                : scaleMode === "FIT_WIDTH"
+                ? "Width 100%"
+                : "Fit View"}
+            </span>
           </button>
 
           {/* Console Drawer Toggle */}
@@ -452,8 +462,8 @@ export function LiveBrowserViewport({
       <div
         onWheel={handleWheel}
         className={cn(
-          "relative flex-1 bg-[#010409] flex flex-col items-center justify-center overflow-auto",
-          isExpanded ? "h-[calc(100vh-105px)]" : "min-h-[580px] xl:min-h-[720px] max-h-[85vh]"
+          "relative flex-1 bg-[#010409] flex flex-col items-center justify-center overflow-auto w-full h-full min-h-0",
+          isExpanded ? "h-[calc(100vh-105px)]" : "h-full flex-1 min-h-[450px]"
         )}
       >
         {loading && (
@@ -466,8 +476,8 @@ export function LiveBrowserViewport({
         {state.lastScreenshot ? (
           <div
             className={cn(
-              "relative w-full h-full flex items-center justify-center overflow-auto",
-              scaleMode === "FIT_WIDTH" ? "p-0" : "p-2"
+              "relative w-full h-full flex-1 flex items-center justify-center overflow-auto",
+              scaleMode === "FIT_WIDTH" ? "p-0" : scaleMode === "FIT_HEIGHT" ? "p-0" : "p-2"
             )}
           >
             {/* Live Screencast Frame - Direct GPU Render without transition delays */}
@@ -479,8 +489,10 @@ export function LiveBrowserViewport({
               onClick={handleImageClick}
               title="Click anywhere to interact with the live browser"
               className={cn(
-                "select-none cursor-pointer",
-                scaleMode === "FIT_WIDTH"
+                "select-none cursor-pointer transition-all",
+                scaleMode === "FIT_HEIGHT"
+                  ? "h-full w-full object-contain max-h-full"
+                  : scaleMode === "FIT_WIDTH"
                   ? "w-full h-auto object-cover rounded-none"
                   : "max-w-full max-h-full object-contain rounded border border-[#30363d] shadow-2xl"
               )}

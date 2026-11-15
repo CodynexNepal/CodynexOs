@@ -43,6 +43,7 @@ export class QuotaManagerService {
       AiProviderName.OPENROUTER,
       AiProviderName.CLOUDFLARE,
       AiProviderName.HUGGINGFACE,
+      AiProviderName.OPENCODE,
       AiProviderName.OPENAI,
     ];
 
@@ -52,45 +53,89 @@ export class QuotaManagerService {
       if (p === AiProviderName.OLLAMA) {
         return {
           provider: p,
+          displayName: 'Ollama (Local)',
+          isLocal: true,
+          isPaid: false,
+          freeTierAllowance: 'Unlimited (On-Device)',
+          requestsUsedToday: usage.requests,
           dailyRequestsUsed: usage.requests,
+          tokensUsedToday: usage.tokens,
           dailyTokensUsed: usage.tokens,
           dailyLimitTokens: null,
           dailyLimitRequests: null,
+          remainingAllowance: 'Unlimited',
           quotaKnown: true,
-          quotaStatus: 'OK',
+          quotaStatus: 'OK' as const,
           detail: 'Local on-device hardware inference. Zero external API quota limits.',
         };
       }
 
       if (p === AiProviderName.CLOUDFLARE) {
         const dailyLimitNeurons = 10000;
-        // Approximation: ~1 neuron per 10 tokens on standard 8B models
         const estimatedNeuronsUsed = Math.ceil(usage.tokens / 10);
         const isExhausted = estimatedNeuronsUsed >= dailyLimitNeurons;
+        const remainingNeurons = Math.max(0, dailyLimitNeurons - estimatedNeuronsUsed);
         return {
           provider: p,
+          displayName: 'Cloudflare Workers AI',
+          isLocal: false,
+          isPaid: false,
+          freeTierAllowance: '10,000 Neurons / Day',
+          requestsUsedToday: usage.requests,
           dailyRequestsUsed: usage.requests,
+          tokensUsedToday: usage.tokens,
           dailyTokensUsed: usage.tokens,
-          dailyLimitTokens: 100000, // 10k neurons equivalent
+          dailyLimitTokens: 100000,
           dailyLimitRequests: null,
+          remainingAllowance: isExhausted
+            ? '0 Neurons (Exhausted)'
+            : `~${remainingNeurons} Neurons remaining`,
           quotaKnown: true,
-          quotaStatus: isExhausted ? 'EXHAUSTED' : 'OK',
+          quotaStatus: (isExhausted ? 'EXHAUSTED' : 'OK') as 'OK' | 'EXHAUSTED',
           detail: `Cloudflare Workers AI free allowance: 10,000 Neurons/day (~${estimatedNeuronsUsed}/${dailyLimitNeurons} neurons consumed today).`,
         };
       }
 
-      // Gemini, Groq, OpenRouter, Hugging Face, OpenAI
-      // Note: Provider APIs do not expose real-time remaining quota headers in a unified standard.
-      // We strictly display "Quota information unavailable" to prevent misleading users with made-up numbers.
+      const displayNames: Record<string, string> = {
+        gemini: 'Google Gemini',
+        groq: 'Groq LPUs',
+        openrouter: 'OpenRouter (Free Hub)',
+        huggingface: 'Hugging Face Serverless',
+        opencode: 'OpenCode API (Open Source)',
+        openai: 'OpenAI (Paid Provider)',
+      };
+
+      const allowances: Record<string, string> = {
+        gemini: '15 RPM / 1M TPM / 1,500 RPD',
+        groq: '30 RPM / 6K TPM',
+        openrouter: '20 RPM (18+ Free Models)',
+        huggingface: 'Community Serverless Rate',
+        opencode: 'OpenCode Standard / Custom Endpoint Rate',
+        openai: 'Commercial Paid API Only',
+      };
+
+      const isPaid = p === AiProviderName.OPENAI;
+
       return {
         provider: p,
+        displayName: displayNames[p] || p,
+        isLocal: false,
+        isPaid,
+        freeTierAllowance: allowances[p] || 'Free Tier Rate',
+        requestsUsedToday: usage.requests,
         dailyRequestsUsed: usage.requests,
+        tokensUsedToday: usage.tokens,
         dailyTokensUsed: usage.tokens,
         dailyLimitTokens: null,
         dailyLimitRequests: null,
+        remainingAllowance: isPaid ? 'Pay-as-you-go' : undefined,
+        quotaUnavailableReason: isPaid
+          ? undefined
+          : 'Quota information unavailable from provider API headers',
         quotaKnown: false,
-        quotaStatus: 'UNAVAILABLE',
-        detail: 'Quota information unavailable from provider API headers. Local tracking records daily consumption.',
+        quotaStatus: 'UNAVAILABLE' as const,
+        detail:
+          'Quota information unavailable from provider API headers. Local tracking records daily consumption.',
       };
     });
   }
@@ -103,6 +148,7 @@ export class QuotaManagerService {
       AiProviderName.OPENROUTER,
       AiProviderName.CLOUDFLARE,
       AiProviderName.HUGGINGFACE,
+      AiProviderName.OPENCODE,
       AiProviderName.OPENAI,
     ];
 
@@ -110,12 +156,19 @@ export class QuotaManagerService {
       if (p === AiProviderName.OLLAMA) {
         return {
           provider: p,
+          displayName: 'Ollama (Local)',
+          isLocal: true,
+          isPaid: false,
+          freeTierAllowance: 'Unlimited (On-Device)',
+          requestsUsedToday: 0,
           dailyRequestsUsed: 0,
+          tokensUsedToday: 0,
           dailyTokensUsed: 0,
           dailyLimitTokens: null,
           dailyLimitRequests: null,
+          remainingAllowance: 'Unlimited',
           quotaKnown: true,
-          quotaStatus: 'OK',
+          quotaStatus: 'OK' as const,
           detail: 'Local on-device hardware inference. Zero external API quota limits.',
         };
       }
@@ -123,25 +176,63 @@ export class QuotaManagerService {
       if (p === AiProviderName.CLOUDFLARE) {
         return {
           provider: p,
+          displayName: 'Cloudflare Workers AI',
+          isLocal: false,
+          isPaid: false,
+          freeTierAllowance: '10,000 Neurons / Day',
+          requestsUsedToday: 0,
           dailyRequestsUsed: 0,
+          tokensUsedToday: 0,
           dailyTokensUsed: 0,
           dailyLimitTokens: 100000,
           dailyLimitRequests: null,
+          remainingAllowance: '~10,000 Neurons remaining',
           quotaKnown: true,
-          quotaStatus: 'OK',
+          quotaStatus: 'OK' as const,
           detail: 'Cloudflare Workers AI free allowance: 10,000 Neurons/day.',
         };
       }
 
+      const displayNames: Record<string, string> = {
+        gemini: 'Google Gemini',
+        groq: 'Groq LPUs',
+        openrouter: 'OpenRouter (Free Hub)',
+        huggingface: 'Hugging Face Serverless',
+        opencode: 'OpenCode API (Open Source)',
+        openai: 'OpenAI (Paid Provider)',
+      };
+
+      const allowances: Record<string, string> = {
+        gemini: '15 RPM / 1M TPM / 1,500 RPD',
+        groq: '30 RPM / 6K TPM',
+        openrouter: '20 RPM (18+ Free Models)',
+        huggingface: 'Community Serverless Rate',
+        opencode: 'OpenCode Standard / Custom Endpoint Rate',
+        openai: 'Commercial Paid API Only',
+      };
+
+      const isPaid = p === AiProviderName.OPENAI;
+
       return {
         provider: p,
+        displayName: displayNames[p] || p,
+        isLocal: false,
+        isPaid,
+        freeTierAllowance: allowances[p] || 'Free Tier Rate',
+        requestsUsedToday: 0,
         dailyRequestsUsed: 0,
+        tokensUsedToday: 0,
         dailyTokensUsed: 0,
         dailyLimitTokens: null,
         dailyLimitRequests: null,
+        remainingAllowance: isPaid ? 'Pay-as-you-go' : undefined,
+        quotaUnavailableReason: isPaid
+          ? undefined
+          : 'Quota information unavailable from provider API headers',
         quotaKnown: false,
-        quotaStatus: 'UNAVAILABLE',
-        detail: 'Quota information unavailable from provider API headers. Local tracking records daily consumption.',
+        quotaStatus: 'UNAVAILABLE' as const,
+        detail:
+          'Quota information unavailable from provider API headers. Local tracking records daily consumption.',
       };
     });
   }

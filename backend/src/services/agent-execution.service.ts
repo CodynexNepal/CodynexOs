@@ -152,10 +152,10 @@ export class AgentExecutionService {
     preferredModel?: string;
   }): Promise<AgentSessionExecution> {
     const { sessionId, taskId, instruction, roleTitle, owner = 'organization', repoName = 'workspace', preferredProvider, preferredModel } = params;
-    const maxSteps = params.maxSteps || 15;
+    const maxSteps = params.maxSteps || 30; // 30 rapid steps to ensure full task completion within 4 minutes
     const effectiveProvider =
       preferredProvider ||
-      (dotEnvConfig.GROQ_API_KEY ? 'groq' : dotEnvConfig.GEMINI_API_KEY ? 'gemini' : undefined);
+      (dotEnvConfig.GROQ_API_KEY ? 'groq' : dotEnvConfig.OPENCODE_API_KEY ? 'opencode' : dotEnvConfig.GEMINI_API_KEY ? 'gemini' : 'groq');
 
     let contextHistory = `Initial User Task: ${instruction}\n`;
     if (owner && repoName && owner !== 'organization' && owner !== 'workspace' && repoName !== 'workspace') {
@@ -201,8 +201,8 @@ export class AgentExecutionService {
     message: string;
     additionalSteps?: number;
   }): Promise<AgentSessionExecution> {
-    const { sessionId, message, additionalSteps = 15 } = params;
-    let session = this.sessions.get(sessionId);
+    const { sessionId, message, additionalSteps = 30 } = params;
+    const session = this.sessions.get(sessionId);
 
     if (!session) {
       return this.runAgentLoop({
@@ -242,33 +242,37 @@ export class AgentExecutionService {
   private async executeSessionLoop(session: AgentSessionExecution): Promise<AgentSessionExecution> {
     const tools = this.getToolDefinitions();
     const roleTitle = session.roleTitle || 'Autonomous AI Engineer';
-    const effectiveProvider = session.effectiveProvider;
     const preferredModel = session.preferredModel;
     const owner = session.owner || 'workspace';
     const repoName = session.repoName || 'workspace';
     const filesWrittenSet = session.filesWrittenSet || new Set<string>();
 
-    const systemPrompt = `You are ${roleTitle}, an autonomous AI software engineer and computer operating agent inside CodyNex OS.
-You possess real computer capabilities: operating browsers, executing terminal commands, reading and writing files.
-You MUST operate iteratively:
-1. Reason about the current state.
-2. Select ONE tool to execute.
-3. Observe the tool output and page/terminal state.
-4. When your goal is completely satisfied, invoke 'task_complete' with your final summary.
+    // 4-MINUTE HIGH-SPEED EXECUTION BUDGET
+    const FOUR_MINUTES_MS = 240_000;
+    const sessionStartTime = Date.now();
+    const deadlineMs = sessionStartTime + FOUR_MINUTES_MS;
 
-Output strictly valid JSON with this shape:
-{
-  "thought": "Your concise step-by-step reasoning",
-  "tool": "name_of_tool",
-  "toolInput": { ...arguments matching the tool definition }
-}
-
-Available tools:
-${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.parameters)})`).join('\n')}`;
+    const availableFastProviders = ['groq', 'opencode', 'gemini', 'openrouter', 'cloudflare', 'ollama'];
+    let currentProvider = (session.effectiveProvider || 'groq').toLowerCase();
 
     session.status = 'RUNNING';
 
     while (session.currentStep < session.maxSteps) {
+      // 1. Check strict 4-minute maximum time limit
+      const now = Date.now();
+      const elapsedMs = now - sessionStartTime;
+      const remainingMs = Math.max(0, deadlineMs - now);
+      const remainingSec = Math.round(remainingMs / 1000);
+
+      if (remainingMs <= 0) {
+        logger.info('4-minute session execution budget reached, concluding and synthesizing result', {
+          sessionId: session.sessionId,
+          elapsedMs,
+        });
+        session.contextHistory += `\n[Time Notice: 4-minute maximum budget reached (${Math.round(elapsedMs / 1000)}s elapsed). Synthesizing final verified outcome.]\n`;
+        break;
+      }
+
       // Check cancellation
       if (this.cancelledSessions.has(session.sessionId)) {
         session.status = 'CANCELLED';
@@ -290,24 +294,72 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
         taskId: session.taskId,
         step: session.currentStep,
         maxSteps: session.maxSteps,
+        provider: currentProvider,
+        remainingSec,
         timestamp: new Date().toISOString(),
       });
+
+      const dynamicSystemPrompt = `You are ${roleTitle}, an ultra-high-velocity autonomous AI software engineer inside CodyNex OS operating under a strict 4-MINUTE EXECUTION DEADLINE.
+Time Remaining: ${remainingSec} seconds.
+Your objective: You MUST execute decisive, rapid actions until the user's task is 100% complete and matches the prompt EXACTLY:
+"${session.instruction}"
+
+Rules for High Velocity & Exact Goal Completion:
+1. Act with urgency: never repeat an action that already succeeded.
+2. If searching or browsing: use exact keywords, find elements immediately, and confirm state.
+3. If coding: write complete files directly without dummy placeholders.
+4. Only invoke 'task_complete' when you have verified that the prompt's requirements are 100% satisfied. If more actions are needed to fulfill the prompt, do them immediately!
+5. If approaching the 4-minute mark, execute final verification and complete.
+
+Output strictly valid JSON with this shape:
+{
+  "thought": "Your concise step-by-step reasoning",
+  "tool": "name_of_tool",
+  "toolInput": { ...arguments matching the tool definition }
+}
+
+Available tools:
+${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.parameters)})`).join('\n')}`;
 
       let aiResponse: any;
       try {
         aiResponse = await this.modelRouter.complete(
           {
-            systemPrompt,
-            userPrompt: `Current Execution Context & History:\n${session.contextHistory}\nDecide the next action or complete the task. Return JSON.`,
+            systemPrompt: dynamicSystemPrompt,
+            userPrompt: `[Execution Status: ${remainingSec}s left | Step ${session.currentStep} of ${session.maxSteps}]\nCurrent Context & History:\n${session.contextHistory}\nDecide the next decisive action or complete the task. Return JSON strictly.`,
             responseFormat: 'json',
-            maxOutputTokens: 2048,
+            maxOutputTokens: 512,
           },
-          { taskId: session.taskId, preferredProvider: effectiveProvider, preferredModel, agentRole: roleTitle },
+          {
+            taskId: session.taskId,
+            preferredProvider: currentProvider,
+            preferredModel: currentProvider === session.effectiveProvider ? preferredModel : undefined,
+            agentRole: roleTitle,
+            fastTimeoutMs: currentProvider === 'ollama' ? 45000 : 7000, // Fast jump for cloud, generous for local Ollama
+          },
         );
       } catch (err: any) {
-        logger.error('Agent reasoning step error', { error: err.message, taskId: session.taskId });
-        session.contextHistory += `\n[Agent Inference Error: ${err.message}. Retrying action...]`;
-        await new Promise((r) => setTimeout(r, 1000));
+        // FAST PROVIDER FAILOVER: Jump immediately to another active provider
+        const curIdx = Math.max(0, availableFastProviders.indexOf(currentProvider));
+        const nextProvider = availableFastProviders[(curIdx + 1) % availableFastProviders.length] || 'groq';
+        logger.warn('AI reasoning stalled or timed out, instantly jumping to alternative provider', {
+          stalledProvider: currentProvider,
+          nextProvider,
+          error: err.message,
+          sessionId: session.sessionId,
+        });
+        session.effectiveProvider = nextProvider;
+        currentProvider = nextProvider;
+        session.contextHistory += `\n[Fast Jump Notice: Provider response stalled (${err.message}). Instantly jumped to ${nextProvider.toUpperCase()} for accelerated reasoning.]\n`;
+        socketServer.emit('agent:thinking', {
+          sessionId: session.sessionId,
+          taskId: session.taskId,
+          step: session.currentStep,
+          maxSteps: session.maxSteps,
+          jumpedToProvider: nextProvider,
+          timestamp: new Date().toISOString(),
+        });
+        // Continue immediately on the new fast provider without waiting
         continue;
       }
 
@@ -345,6 +397,26 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
       });
 
       if (toolName === 'task_complete') {
+        // Prevent premature completion if work is required and time remains
+        const isBrowsingTask = /whatsapp|message|chat|send|search|browse|login|navigate|web/i.test(session.instruction || '');
+        const hasExecutedInteractiveTool = session.steps.some(
+          (s) => (s.tool === 'browser_type' || s.tool === 'browser_press_key' || s.tool === 'browser_click') && s.status === 'SUCCESS',
+        );
+
+        const isPremature =
+          remainingSec > 45 &&
+          session.currentStep < session.maxSteps - 1 &&
+          ((isBrowsingTask && !hasExecutedInteractiveTool) ||
+            (session.currentStep <= 2 &&
+              /create|build|write|implement|fix|deploy/i.test(session.instruction || '') &&
+              filesWrittenSet.size === 0 &&
+              !session.steps.some((s) => s.tool === 'terminal_execute')));
+
+        if (isPremature) {
+          session.contextHistory += `\n[System Alert: Task is NOT complete yet. Do not stop halfway! You must continue until the action (e.g. typing, sending message, or running tools) is completed for: "${session.instruction}".]\n`;
+          continue;
+        }
+
         stepRecord.status = 'SUCCESS';
         stepRecord.toolOutput = toolInput.summary || 'Task completed successfully.';
         session.finalAnswer = String(stepRecord.toolOutput);
@@ -381,17 +453,19 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
         timestamp: new Date().toISOString(),
       });
 
-      // Append observation to context
-      session.contextHistory += `\nStep ${session.currentStep} Tool [${toolName}] Input: ${JSON.stringify(toolInput)}\nObservation: ${
-        typeof toolResult === 'string' ? toolResult.slice(0, 2000) : JSON.stringify(toolResult).slice(0, 2000)
-      }\n`;
+      // Format compact observation to minimize token consumption and prevent HTTP 429 rate limits
+      const obsStr =
+        typeof toolResult === 'string'
+          ? toolResult.slice(0, 250)
+          : JSON.stringify(toolResult).slice(0, 250);
+      session.contextHistory += `\nStep ${session.currentStep} [${toolName}]: ${obsStr}\n`;
 
-      // Bound context window to keep inference lean and ultra-responsive
-      if (session.contextHistory && session.contextHistory.length > 8000) {
+      // Keep context lean (< 2000 chars / ~400 tokens) for sub-500ms lightning-fast response times
+      if (session.contextHistory && session.contextHistory.length > 2000) {
         const lines = session.contextHistory.split('\n');
-        const header = lines.slice(0, 3).join('\n');
-        const recent = lines.slice(-25).join('\n');
-        session.contextHistory = `${header}\n... [earlier steps truncated for speed] ...\n${recent}`;
+        const header = lines.slice(0, 2).join('\n');
+        const recent = lines.slice(-8).join('\n');
+        session.contextHistory = `${header}\n... [earlier steps compacted for speed] ...\n${recent}`;
       }
     }
 
@@ -440,7 +514,7 @@ Generate a comprehensive Executive Deliverables Report in markdown:
 (What the human operator or agent should do next)`,
             maxOutputTokens: 2048,
           },
-          { taskId: session.taskId, preferredProvider: effectiveProvider, preferredModel, agentRole: roleTitle },
+          { taskId: session.taskId, preferredProvider: currentProvider, preferredModel, agentRole: roleTitle },
         );
         session.finalAnswer = debriefRes.content;
       } catch {
@@ -495,11 +569,17 @@ Generate a comprehensive Executive Deliverables Report in markdown:
       }
       case 'browser_extract': {
         const content = await browserService.extractContent(sessionId);
+        const compactElements = (content.interactiveElements || []).slice(0, 6).map((el: any) => ({
+          selector: el.selector,
+          type: el.role || el.tag,
+          text: el.text ? el.text.slice(0, 30) : undefined,
+          placeholder: el.placeholder ? el.placeholder.slice(0, 30) : undefined,
+        }));
         return {
           url: content.url,
           title: content.title,
-          interactiveElements: content.interactiveElements,
-          snippet: content.text.slice(0, 1500),
+          interactiveElements: compactElements,
+          snippet: content.text ? content.text.slice(0, 150) : '',
         };
       }
       case 'terminal_execute': {

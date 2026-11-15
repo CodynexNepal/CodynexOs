@@ -308,8 +308,83 @@ export default function AiUsagePage() {
     }
   };
 
-  const providers = providersQuery.data ?? [];
-  const quotas = quotasQuery.data ?? [];
+  const providers: ProviderItem[] = (providersQuery.data ?? []).map((raw: any) => {
+    const id = raw.id || raw.provider || "";
+    const name = raw.name || raw.displayName || id;
+    const isConfigured = Boolean(raw.isConfigured);
+    const status =
+      raw.status ||
+      (isConfigured ? "CONNECTED" : "DISCONNECTED");
+    const isPaid = Boolean(raw.isPaid);
+    const isFreeEligible = raw.isFreeEligible ?? !isPaid;
+    const isLocal = Boolean(raw.isLocal);
+    const modelCount =
+      raw.modelCount ??
+      (id === "gemini" ? 5 : id === "groq" ? 6 : id === "openrouter" ? 18 : 3);
+    const activeModel = raw.activeModel || raw.defaultModel || "";
+    const baseUrl = raw.baseUrl || raw.endpoint || "";
+    const description = raw.description || raw.freeTierNotes || "";
+    const quotaDescription =
+      raw.quotaDescription ||
+      raw.freeTierNotes ||
+      (isPaid ? "Pay-as-you-go" : "$0 Verified Free Tier");
+
+    return {
+      ...raw,
+      id,
+      name,
+      displayName: name,
+      isConfigured,
+      status,
+      isPaid,
+      isFreeEligible,
+      isLocal,
+      modelCount,
+      activeModel,
+      defaultModel: activeModel,
+      baseUrl,
+      endpoint: baseUrl,
+      description,
+      quotaDescription,
+    };
+  });
+
+  const quotas: ProviderQuotaItem[] = (quotasQuery.data ?? []).map((raw: any) => {
+    const provider = raw.provider || "";
+    const displayName = raw.displayName || provider;
+    const isLocal = raw.isLocal ?? provider === "ollama";
+    const isPaid = raw.isPaid ?? provider === "openai";
+    const requestsUsedToday = raw.requestsUsedToday ?? raw.dailyRequestsUsed ?? 0;
+    const tokensUsedToday = raw.tokensUsedToday ?? raw.dailyTokensUsed ?? 0;
+    const freeTierAllowance =
+      raw.freeTierAllowance ||
+      (provider === "ollama"
+        ? "Unlimited (On-Device)"
+        : provider === "cloudflare"
+        ? "10,000 Neurons / Day"
+        : provider === "gemini"
+        ? "15 RPM / 1M TPM / 1,500 RPD"
+        : provider === "groq"
+        ? "30 RPM / 6K TPM"
+        : provider === "openrouter"
+        ? "20 RPM (18+ Free Models)"
+        : isPaid
+        ? "Commercial Paid API"
+        : "$0 Free Tier");
+
+    return {
+      ...raw,
+      provider,
+      displayName,
+      isLocal,
+      isPaid,
+      freeTierAllowance,
+      requestsUsedToday,
+      tokensUsedToday,
+      remainingAllowance: raw.remainingAllowance,
+      quotaUnavailableReason: raw.quotaUnavailableReason,
+    };
+  });
   const preferences = prefsQuery.data ?? [];
   const usageSummary = usageQuery.data?.summary;
   const isFreeOnlyActive = settingsQuery.data?.freeOnlyMode ?? true;
@@ -388,7 +463,7 @@ export default function AiUsagePage() {
           }`}
         >
           <Cpu className="h-4 w-4" />
-          Providers (7 Supported)
+          Providers (8 Supported)
         </button>
         <button
           type="button"
@@ -1059,6 +1134,32 @@ export default function AiUsagePage() {
                 Local inference endpoint. Default is <code>http://127.0.0.1:11434</code>.
               </p>
             </div>
+          ) : configModalProvider?.id === "opencode" ? (
+            <>
+              <div>
+                <label className="mb-1 block font-medium text-ink">OpenCode API Key</label>
+                <Input
+                  type="password"
+                  placeholder="Paste OpenCode API Key"
+                  value={credApiKey}
+                  onChange={(e) => setCredApiKey(e.target.value)}
+                />
+                <p className="mt-1 text-[11px] text-ink-muted">
+                  API Key from OpenCode Console (opencode.ai) or custom endpoint.
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block font-medium text-ink">OpenCode Base URL (Optional)</label>
+                <Input
+                  placeholder="https://opencode.ai/zen/v1"
+                  value={credBaseUrl}
+                  onChange={(e) => setCredBaseUrl(e.target.value)}
+                />
+                <p className="mt-1 text-[11px] text-ink-muted">
+                  Default: <code>https://opencode.ai/zen/v1</code> (OpenCode Zen Gateway).
+                </p>
+              </div>
+            </>
           ) : configModalProvider?.id === "cloudflare" ? (
             <>
               <div>

@@ -159,6 +159,15 @@ export const codynexApi = {
       previewUrl?: string;
       expectedDeliverables?: string[];
     }) => api.post<{ success: boolean; data: Record<string, unknown> }>("/qa/release-gates/run", body || {}),
+    latestReleaseCertificate: (params?: {
+      owner?: string;
+      name?: string;
+      taskId?: string;
+    }) =>
+      api.get<{ success: boolean; data: Record<string, unknown> }>(
+        "/qa/release-gates/latest",
+        { params }
+      ),
   },
   marketing: {
     campaigns: (businessId?: string) =>
@@ -437,5 +446,51 @@ export const codynexApi = {
     cancel: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/cancel`),
     reply: (sessionId: string, message: string, additionalSteps?: number) =>
       api.post(`/agent/sessions/${sessionId}/reply`, { message, additionalSteps }),
+  },
+  voice: {
+    status: () =>
+      api.get<{ success: boolean; data: { status: string; voice: string; stt: string } }>("/voice/status"),
+    transcribe: (audioBase64: string, format = "webm") =>
+      api.post<{ success: boolean; data: { text: string; language: string; latencyMs: number } }>(
+        "/voice/transcribe",
+        { audioBase64, format }
+      ),
+    synthesize: (text: string, voice?: string) =>
+      api.post<{ success: boolean; data: { audioBase64: string; mimeType: string; latencyMs: number } }>(
+        "/voice/synthesize",
+        { text, voice }
+      ),
+    directive: (body: { nepaliText: string; activeSessionId?: string; activeWorkspace?: string }) =>
+      api.post<{
+        success: boolean;
+        data: {
+          intent: {
+            intentId: string;
+            rawNepaliText: string;
+            actionType: string;
+            permissionLevel: 1 | 2 | 3;
+            targetWorkspace?: string;
+            assignedRole?: string;
+            nepaliVoiceReply: string;
+            technicalRecommendation?: string;
+            requiresConfirmation: boolean;
+            confirmationPrompt?: string;
+          };
+          audioBase64?: string;
+          mimeType?: string;
+          executionSessionId?: string;
+        };
+      }>("/voice/directive", body),
+    confirmApproval: (intentId: string, confirmed: boolean) =>
+      api.post<{
+        success: boolean;
+        data: {
+          success: boolean;
+          voiceReply: string;
+          executionSessionId?: string;
+          audioBase64?: string;
+          mimeType?: string;
+        };
+      }>(`/voice/approvals/${intentId}`, { confirmed }),
   },
 };

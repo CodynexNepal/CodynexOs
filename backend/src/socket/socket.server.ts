@@ -35,6 +35,62 @@ class SocketServerManager {
 
     this.io.on('connection', (socket) => {
       socket.join('codynex:os');
+
+      socket.on(
+        'voice:directive_submit',
+        async (payload: { nepaliText: string; activeSessionId?: string; activeWorkspace?: string }) => {
+          try {
+            const { voiceService } = await import('../services/voice.service');
+            const intent = await voiceService.processNepaliVoiceDirective(payload.nepaliText, {
+              activeSessionId: payload.activeSessionId,
+              activeWorkspace: payload.activeWorkspace,
+            });
+
+            let audioResult: { audioBase64: string; mimeType: string } | null = null;
+            try {
+              audioResult = await voiceService.synthesizeSpeech(intent.nepaliVoiceReply);
+            } catch {
+              // synthesis optional fallback
+            }
+
+            let executionResult: { executionSessionId?: string } | null = null;
+            if (!intent.requiresConfirmation) {
+              executionResult = await voiceService.executeAuthorizedIntent(intent.intentId, true);
+            }
+
+            socket.emit('voice:directive_result', {
+              intent,
+              audioBase64: audioResult?.audioBase64,
+              mimeType: audioResult?.mimeType || 'audio/mpeg',
+              executionSessionId: executionResult?.executionSessionId,
+            });
+          } catch (err: any) {
+            socket.emit('voice:error', { error: err.message });
+          }
+        },
+      );
+
+      socket.on('voice:permission_reply', async (payload: { intentId: string; confirmed: boolean }) => {
+        try {
+          const { voiceService } = await import('../services/voice.service');
+          const result = await voiceService.executeAuthorizedIntent(payload.intentId, payload.confirmed);
+
+          let audioResult: { audioBase64: string; mimeType: string } | null = null;
+          try {
+            audioResult = await voiceService.synthesizeSpeech(result.voiceReply);
+          } catch {
+            // synthesis optional fallback
+          }
+
+          socket.emit('voice:permission_result', {
+            ...result,
+            audioBase64: audioResult?.audioBase64,
+            mimeType: audioResult?.mimeType || 'audio/mpeg',
+          });
+        } catch (err: any) {
+          socket.emit('voice:error', { error: err.message });
+        }
+      });
     });
 
     logger.info('Socket.io server initialized');

@@ -128,38 +128,87 @@ export function LiveCompanyFlowVisualizer({
     compositeScore: number;
     gatesPassed?: number;
     totalGates?: number;
-  } | null>({
-    certificateId: "CERT-0E81725F-MWGSZM82",
-    verdict: "PASSED",
-    compositeScore: 97,
-    gatesPassed: 6,
-    totalGates: 7,
-  });
+  } | null>(null);
+
+  const [evaluatingGates, setEvaluatingGates] = useState(false);
+
+  const triggerGateEvaluation = async () => {
+    try {
+      setEvaluatingGates(true);
+      const res = await codynexApi.qa.evaluateReleaseGates(projectId ? { taskId: projectId } : undefined);
+      const cert = unwrap<{
+        certificateId?: string;
+        verdict?: "PASSED" | "FAILED";
+        compositeScore?: number;
+        gatesPassed?: number;
+        totalGates?: number;
+      }>(res.data);
+      if (cert?.certificateId) {
+        setLatestCertificate({
+          certificateId: cert.certificateId,
+          verdict: cert.verdict || "PASSED",
+          compositeScore: cert.compositeScore ?? 0,
+          gatesPassed: cert.gatesPassed,
+          totalGates: cert.totalGates,
+        });
+      }
+    } catch (err) {
+      console.warn("Could not evaluate release gates:", err);
+    } finally {
+      setEvaluatingGates(false);
+    }
+  };
 
   const fetchLiveActivity = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await codynexApi.agents.liveActivity(projectId ? { projectId } : undefined);
-      const payload = unwrap<AgentLiveActivityResponse>(res.data);
-      let tasksFiltered = payload.runningTasks ?? [];
-      let recentFiltered = payload.recentTasks ?? [];
+      const [res, certRes] = await Promise.allSettled([
+        codynexApi.agents.liveActivity(projectId ? { projectId } : undefined),
+        codynexApi.qa.latestReleaseCertificate(projectId ? { taskId: projectId } : undefined),
+      ]);
 
-      if (projectId) {
-        try {
-          const pTasksRes = await codynexApi.tasks.list({ projectId });
-          const pTasks = unwrap<TaskItem[]>(pTasksRes.data) ?? [];
-          if (pTasks.length > 0) {
-            recentFiltered = pTasks;
-            tasksFiltered = pTasks.filter((t) => t.status === "RUNNING");
+      if (res.status === "fulfilled") {
+        const payload = unwrap<AgentLiveActivityResponse>(res.value.data);
+        let tasksFiltered = payload.runningTasks ?? [];
+        let recentFiltered = payload.recentTasks ?? [];
+
+        if (projectId) {
+          try {
+            const pTasksRes = await codynexApi.tasks.list({ projectId });
+            const pTasks = unwrap<TaskItem[]>(pTasksRes.data) ?? [];
+            if (pTasks.length > 0) {
+              recentFiltered = pTasks;
+              tasksFiltered = pTasks.filter((t) => t.status === "RUNNING");
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
+        }
+
+        setRunningTasks(tasksFiltered);
+        setRecentTasks(recentFiltered);
+        setRecentLogs(payload.recentLogs ?? []);
+      }
+
+      if (certRes.status === "fulfilled" && certRes.value.data?.data) {
+        const c = unwrap<{
+          certificateId?: string;
+          verdict?: "PASSED" | "FAILED";
+          compositeScore?: number;
+          gatesPassed?: number;
+          totalGates?: number;
+        }>(certRes.value.data);
+        if (c?.certificateId) {
+          setLatestCertificate({
+            certificateId: c.certificateId,
+            verdict: c.verdict || "PASSED",
+            compositeScore: c.compositeScore ?? 0,
+            gatesPassed: c.gatesPassed,
+            totalGates: c.totalGates,
+          });
         }
       }
 
-      setRunningTasks(tasksFiltered);
-      setRecentTasks(recentFiltered);
-      setRecentLogs(payload.recentLogs ?? []);
       setLastUpdated(new Date().toISOString());
     } catch {
       // Fallback gracefully
@@ -283,31 +332,31 @@ export function LiveCompanyFlowVisualizer({
     );
     const latestQa = sortedQaTasks[0];
 
-    // Priority 1: An approved 7-Gate certificate (score >= 80% or verdict === "PASSED") immediately certifies QA
-    if (
-      latestCertificate &&
-      (latestCertificate.verdict === "PASSED" || latestCertificate.compositeScore >= 80)
-    ) {
-      statuses.qa = "COMPLETED";
+    if (latestQa?.status === "RUNNING" || evaluatingGates) {
+      statuses.qa = "RUNNING";
+    } else if (latestCertificate) {
+      if (latestCertificate.verdict === "PASSED" && latestCertificate.compositeScore >= 80) {
+        statuses.qa = "COMPLETED";
+      } else {
+        statuses.qa = "FAILED";
+      }
     } else if (latestQa) {
-      if (latestQa.status === "RUNNING") {
-        statuses.qa = "RUNNING";
-      } else if (latestQa.status === "COMPLETED") {
+      if (latestQa.status === "COMPLETED") {
         statuses.qa = "COMPLETED";
       } else if (latestQa.status === "FAILED") {
         statuses.qa = "FAILED";
       } else {
         statuses.qa = "PENDING";
       }
-    } else if (latestCertificate && latestCertificate.verdict === "FAILED") {
-      statuses.qa = "FAILED";
     } else {
-      statuses.qa = "COMPLETED";
+      statuses.qa = "PENDING";
     }
 
     // Check DevOps - strictly gated by QA
     if (statuses.qa === "FAILED") {
       statuses.devops = "BLOCKED";
+    } else if (statuses.qa === "RUNNING" || statuses.qa === "PENDING") {
+      statuses.devops = "PENDING";
     } else {
       const devopsTasks = allTasks.filter((t) =>
         ["devops_deploy", "github_push_pr"].includes(t.taskType)
@@ -323,10 +372,8 @@ export function LiveCompanyFlowVisualizer({
         statuses.devops = "COMPLETED";
       } else if (latestDevops?.status === "FAILED") {
         statuses.devops = "FAILED";
-      } else if (statuses.qa === "COMPLETED") {
-        statuses.devops = "COMPLETED";
       } else {
-        statuses.devops = "PENDING";
+        statuses.devops = "COMPLETED";
       }
     }
 
@@ -676,52 +723,86 @@ export function LiveCompanyFlowVisualizer({
             </div>
 
             {/* QA Approved Certified Banner when score is >= 80% */}
-            {stageStatus.qa === "COMPLETED" && (
+            {stageStatus.qa === "COMPLETED" && latestCertificate && (
               <div className="rounded-lg border border-emerald-300 bg-emerald-50/80 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/30 flex flex-wrap items-center justify-between gap-3 shadow-sm">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-200 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 font-bold">
                     <CheckCircle2 className="h-4 w-4" />
                   </span>
                   <div>
-                    <h5 className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
-                      Release Quality Certified &amp; Approved — Score: {latestCertificate?.compositeScore ?? 97}%
+                    <h5 className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
+                      Release Quality Certified &amp; Approved — Score: {latestCertificate.compositeScore}%
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+                        {latestCertificate.gatesPassed ?? 7}/{latestCertificate.totalGates ?? 7} Gates Passed
+                      </span>
                     </h5>
                     <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
-                      {latestCertificate?.certificateId ? `Certificate ${latestCertificate.certificateId} · ` : ""}All release quality gates satisfied. DevOps deployment pipeline cleared for production release.
+                      Certificate {latestCertificate.certificateId} · Real-time release quality gates satisfied. DevOps deployment pipeline cleared for production release.
                     </p>
                   </div>
                 </div>
-                <Link
-                  href="/workspace"
-                  className="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 text-xs font-semibold shadow-sm transition-colors"
-                >
-                  Inspect 7-Gate Scorecard
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={triggerGateEvaluation}
+                    disabled={evaluatingGates}
+                    className="text-xs h-7 border-emerald-400 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                  >
+                    <RefreshCw className={cn("h-3 w-3 mr-1", evaluatingGates && "animate-spin")} />
+                    Re-evaluate Gates
+                  </Button>
+                  <Link
+                    href="/workspace"
+                    className="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    Inspect 7-Gate Scorecard
+                  </Link>
+                </div>
               </div>
             )}
 
             {/* QA Failure remediation banner if QA is actually failed */}
             {stageStatus.qa === "FAILED" && (
-              <div className="rounded-lg border border-rose-300 bg-rose-50/80 p-3.5 dark:border-rose-900/60 dark:bg-rose-950/30 flex flex-wrap items-center justify-between gap-3 shadow-sm animate-pulse">
+              <div className="rounded-lg border border-rose-300 bg-rose-50/80 p-3.5 dark:border-rose-900/60 dark:bg-rose-950/30 flex flex-wrap items-center justify-between gap-3 shadow-sm">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-7 w-7 items-center justify-center rounded-md bg-rose-200 text-rose-800 dark:bg-rose-900 dark:text-rose-200 font-bold">
                     <AlertTriangle className="h-4 w-4" />
                   </span>
                   <div>
-                    <h5 className="text-xs font-bold text-rose-900 dark:text-rose-200">
+                    <h5 className="text-xs font-bold text-rose-900 dark:text-rose-200 flex items-center gap-2">
                       QA Quality Verification Alert — DevOps Release Deployment Gated
+                      {latestCertificate && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-200 dark:bg-rose-900 text-rose-800 dark:text-rose-200">
+                          Score: {latestCertificate.compositeScore}% ({latestCertificate.gatesPassed ?? 0}/{latestCertificate.totalGates ?? 7} Passed)
+                        </span>
+                      )}
                     </h5>
                     <p className="text-[11px] text-rose-700 dark:text-rose-300">
-                      Release gates evaluated composite score below 80%. DevOps deployment is held until static analysis and test suites pass cleanly.
+                      {latestCertificate
+                        ? `Live release gates evaluated composite score at ${latestCertificate.compositeScore}% (below 80% threshold). Certificate: ${latestCertificate.certificateId}. DevOps deployment is held until failing gates pass cleanly.`
+                        : "Release gates evaluated composite score below 80%. DevOps deployment is held until static analysis and test suites pass cleanly."}
                     </p>
                   </div>
                 </div>
-                <Link
-                  href="/workspace"
-                  className="rounded-md bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 text-xs font-semibold shadow-sm transition-colors"
-                >
-                  Inspect 7-Gate Scorecard
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={triggerGateEvaluation}
+                    disabled={evaluatingGates}
+                    className="text-xs h-7 border-rose-400 text-rose-800 dark:text-rose-200 hover:bg-rose-100 dark:hover:bg-rose-900/40"
+                  >
+                    <RefreshCw className={cn("h-3 w-3 mr-1", evaluatingGates && "animate-spin")} />
+                    Re-evaluate Gates
+                  </Button>
+                  <Link
+                    href="/workspace"
+                    className="rounded-md bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    Inspect 7-Gate Scorecard
+                  </Link>
+                </div>
               </div>
             )}
 

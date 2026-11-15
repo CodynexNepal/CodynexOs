@@ -41,6 +41,7 @@ export interface RouteOptions {
   userDailyTokenBudget?: number;
   taskType?: string;
   complexity?: 'low' | 'medium' | 'high';
+  fastTimeoutMs?: number;
 }
 
 interface CircuitBreakerState {
@@ -301,7 +302,13 @@ export class ModelRouterService {
 
   public async saveProviderCredentials(
     provider: AiProviderName,
-    creds: { apiKey?: string; accountId?: string; apiToken?: string; baseUrl?: string },
+    creds: {
+      apiKey?: string;
+      accountId?: string;
+      apiToken?: string;
+      baseUrl?: string;
+      model?: string;
+    },
   ): Promise<boolean> {
     return this.providerManager.saveProviderCredentials(provider, creds);
   }
@@ -598,6 +605,7 @@ export class ModelRouterService {
       // before local Ollama so agent tasks do not stall on slow local CPU inference.
       const priorityList = globalSettings.providerPriority || [
         AiProviderName.GROQ,
+        AiProviderName.OPENCODE,
         AiProviderName.GEMINI,
         AiProviderName.OPENROUTER,
         AiProviderName.CLOUDFLARE,
@@ -641,9 +649,10 @@ export class ModelRouterService {
         if (!chosenModel) {
           if (candidate.provider === AiProviderName.GEMINI) chosenModel = dotEnvConfig.GEMINI_MODEL || 'gemini-3.8-flash';
           if (candidate.provider === AiProviderName.GROQ) chosenModel = dotEnvConfig.GROQ_MODEL || 'llama-3.3-70b-versatile';
-          if (candidate.provider === AiProviderName.OPENROUTER) chosenModel = dotEnvConfig.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
+          if (candidate.provider === AiProviderName.OPENCODE) chosenModel = dotEnvConfig.OPENCODE_MODEL || 'deepseek-v4.1-flash-free';
+          if (candidate.provider === AiProviderName.OPENROUTER) chosenModel = dotEnvConfig.OPENROUTER_MODEL || 'meta-llama/llama-3.1-8b-instruct:free';
           if (candidate.provider === AiProviderName.CLOUDFLARE) chosenModel = dotEnvConfig.CLOUDFLARE_MODEL || '@cf/meta/llama-3.1-8b-instruct';
-          if (candidate.provider === AiProviderName.HUGGINGFACE) chosenModel = dotEnvConfig.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
+          if (candidate.provider === AiProviderName.HUGGINGFACE) chosenModel = dotEnvConfig.HUGGINGFACE_MODEL || 'mistralai/Mistral-7B-Instruct-v0.3';
           if (candidate.provider === AiProviderName.OPENAI) chosenModel = dotEnvConfig.OPENAI_MODEL || 'gpt-4o-mini';
         }
 
@@ -674,11 +683,27 @@ export class ModelRouterService {
           continue;
         }
 
+        const isLocalOllama = candidate.provider === AiProviderName.OLLAMA;
+        // For local Ollama, allow 60 seconds so local CPU/GPU computation completes reliably without aborting.
+        const candidateTimeoutMs = isLocalOllama ? 60_000 : (opts.fastTimeoutMs || 8_000);
         try {
-          const response = await adapter.complete({
-            ...req,
-            model: chosenModel,
-          });
+          const response = await Promise.race([
+            adapter.complete({
+              ...req,
+              model: chosenModel,
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `Provider ${candidate.provider} took longer than ${candidateTimeoutMs}ms. Fast jump triggered.`,
+                    ),
+                  ),
+                candidateTimeoutMs,
+              ),
+            ),
+          ]);
           configuredAttempted = true;
           this.recordSuccess(candidate.provider, response.latencyMs);
 
@@ -773,6 +798,34 @@ export class ModelRouterService {
       }
     } finally {
       this.releaseSlot();
+    }
+
+    // GUARANTEED LOCAL OLLAMA RESCUE:
+    // If all cloud providers failed, rate-limited (HTTP 429), or circuit-broke,
+    // fallback to local Ollama with adequate time (60s) so the task NEVER fails!
+    const ollamaAdapter = this.adapters.get(AiProviderName.OLLAMA);
+    if (ollamaAdapter && dotEnvConfig.OLLAMA_ENABLED !== false) {
+      try {
+        logger.info('Cloud providers unavailable or rate-limited. Activating local Ollama fallback...');
+        const selected = await this.modelSelector.selectOllamaModel({
+          taskType: opts.taskType,
+          complexity: opts.complexity,
+          requiresTools: Boolean(req.tools?.length),
+          preferredModel: dotEnvConfig.OLLAMA_MODEL,
+        });
+        const response = await ollamaAdapter.complete({
+          ...req,
+          model: selected.model,
+        });
+        this.recordSuccess(AiProviderName.OLLAMA, response.latencyMs);
+        logger.info('Local Ollama rescue succeeded cleanly', {
+          model: response.model,
+          latencyMs: response.latencyMs,
+        });
+        return response;
+      } catch (ollamaErr: any) {
+        errors.push(`ollama rescue: ${ollamaErr.message}`);
+      }
     }
 
     if (!configuredAttempted && errors.length === 0) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useCallback } from "react";
 import Link from "next/link";
 import { RefreshCw, ShieldAlert } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
@@ -20,8 +21,23 @@ export default function OverviewPage() {
     codynexApi.overview()
   );
 
-  useDomainSocket(() => {
-    refetch();
+  const lastRefetchRef = useRef<number>(0);
+  const throttledRefetch = useCallback(() => {
+    const now = Date.now();
+    if (now - lastRefetchRef.current > 5000) {
+      lastRefetchRef.current = now;
+      refetch();
+    }
+  }, [refetch]);
+
+  useDomainSocket((eventName) => {
+    if (
+      eventName === "task:updated" ||
+      eventName === "approval:reviewed" ||
+      eventName === "project:preview_ready"
+    ) {
+      throttledRefetch();
+    }
   });
 
   return (
