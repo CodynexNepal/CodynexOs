@@ -16,6 +16,8 @@ import {
 import { NotificationService } from './notification.service';
 import { AuditService } from './audit.service';
 import { extractJsonObjectString } from '../utils/report-formatter.util';
+import { sopLearningService } from './sop-learning.service';
+import { logger } from '../utils/logger.util';
 
 export interface PlannedTaskSpec {
   key: string;
@@ -200,7 +202,7 @@ export class CommandService {
         taskType: 'github_push_pr',
         priority: 85,
         dependsOnKeys: ['qa_verify'],
-        requiresApproval: false,
+        requiresApproval: true,
       });
       return tasks;
     }
@@ -474,6 +476,16 @@ export class CommandService {
       content: combinedInstruction,
       tags: ['ceo-command', plannerSource],
     });
+
+    // Automatically synthesize and store a trusted SOP from the prompt so agents learn continuously
+    void sopLearningService
+      .learnAndSynthesizeSopFromPrompt({
+        prompt: combinedInstruction,
+        userId: params.userId,
+      })
+      .catch((err) => {
+        logger.warn('Failed to auto-synthesize SOP from prompt', { error: (err as Error).message });
+      });
 
     const createdTasks: Record<string, string> = {};
     if (clarificationQuestions.length === 0) {

@@ -80,6 +80,17 @@ export class ModelEligibilityValidator {
       };
     }
 
+    // OpenCode API ($0 Free Tier with DeepSeek & Qwen open models)
+    if (provider === AiProviderName.OPENCODE) {
+      return {
+        eligible: true,
+        status: ModelEligibilityStatus.FREE_VERIFIED,
+        model: modelName,
+        provider,
+        reason: `OpenCode model '${modelName}' is verified in OpenCode $0 free tier.`,
+      };
+    }
+
     // Check OpenRouter free model naming conventions (:free suffix or openrouter/free)
     if (provider === AiProviderName.OPENROUTER) {
       const isOpenRouterFree = modelName.endsWith(':free') || modelName === 'openrouter/free';

@@ -21,7 +21,9 @@ export class OpenCodeAdapter implements AiProviderAdapter {
     return Boolean(
       dotEnvConfig.OPENCODE_API_KEY ||
         process.env.OPENCODE_API_KEY ||
-        process.env.OPEN_CODE_API_KEY,
+        process.env.OPEN_CODE_API_KEY ||
+        process.env.OPEN_CODE_API ||
+        process.env.OPENCODE_API,
     );
   }
 

@@ -31,6 +31,7 @@ export class AiHealthService {
       AiProviderName.OLLAMA,
       AiProviderName.GEMINI,
       AiProviderName.GROQ,
+      AiProviderName.OPENCODE,
       AiProviderName.OPENROUTER,
       AiProviderName.CLOUDFLARE,
       AiProviderName.HUGGINGFACE,
@@ -150,6 +151,7 @@ export class AiHealthService {
       ollama,
       geminiKey,
       groqKey,
+      opencodeKey,
       openrouterKey,
       cloudflareToken,
       cloudflareAccount,
@@ -159,6 +161,7 @@ export class AiHealthService {
       this.checkOllama(),
       resolveRuntimeSecret('gemini_api_key'),
       resolveRuntimeSecret('groq_api_key'),
+      resolveRuntimeSecret('opencode_api_key'),
       resolveRuntimeSecret('openrouter_api_key'),
       resolveRuntimeSecret('cloudflare_api_token'),
       resolveRuntimeSecret('cloudflare_account_id'),
@@ -171,6 +174,7 @@ export class AiHealthService {
       ollama.available ||
       Boolean(geminiKey) ||
       Boolean(groqKey) ||
+      Boolean(opencodeKey) ||
       Boolean(openrouterKey) ||
       Boolean(cloudflareToken && cloudflareAccount) ||
       Boolean(huggingfaceKey);
@@ -181,18 +185,20 @@ export class AiHealthService {
       status: overallStatus,
       primaryProvider: AiProviderName.OLLAMA,
       routingOrder: [
-        AiProviderName.OLLAMA,
-        AiProviderName.GEMINI,
         AiProviderName.GROQ,
+        AiProviderName.OPENCODE,
+        AiProviderName.GEMINI,
         AiProviderName.OPENROUTER,
         AiProviderName.CLOUDFLARE,
         AiProviderName.HUGGINGFACE,
+        AiProviderName.OLLAMA,
         AiProviderName.OPENAI,
       ],
       ollama,
       cloudProviders: {
-        gemini: { configured: Boolean(geminiKey) },
         groq: { configured: Boolean(groqKey) },
+        opencode: { configured: Boolean(opencodeKey) },
+        gemini: { configured: Boolean(geminiKey) },
         openrouter: { configured: Boolean(openrouterKey) },
         cloudflare: { configured: Boolean(cloudflareToken && cloudflareAccount) },
         huggingface: { configured: Boolean(huggingfaceKey) },

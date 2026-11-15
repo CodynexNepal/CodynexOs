@@ -569,11 +569,30 @@ export class OsController {
     }
   };
 
+  terminalGetHistory = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessionId = getRequiredParam(req, 'sessionId');
+      const history = terminalService.getHistory(sessionId);
+      res.status(STATUS_CODE.OK).json({ success: true, data: history });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   terminalCancel = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const executionId = getRequiredParam(req, 'executionId');
       const ok = terminalService.cancelCommand(executionId);
       res.status(STATUS_CODE.OK).json({ success: true, data: { cancelled: ok } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  agentGetAllSessions = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const sessions = agentExecutionService.getAllSessions();
+      res.status(STATUS_CODE.OK).json({ success: true, data: sessions });
     } catch (err) {
       next(err);
     }

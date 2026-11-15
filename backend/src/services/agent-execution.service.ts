@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { browserService } from './browser.service';
 import { terminalService } from './terminal.service';
 import { WorkspaceService } from './workspace.service';
@@ -6,6 +8,7 @@ import { ModelRouterService } from '../ai/router/model-router.service';
 import { socketServer } from '../socket/socket.server';
 import { dotEnvConfig } from '../configs/envConfig';
 import { logger } from '../utils/logger.util';
+import { sopLearningService } from './sop-learning.service';
 
 export interface ToolDefinition {
   name: string;
@@ -50,11 +53,49 @@ export class AgentExecutionService {
   private sessions: Map<string, AgentSessionExecution> = new Map();
   private pausedSessions: Set<string> = new Set();
   private cancelledSessions: Set<string> = new Set();
+  private storagePath = path.join(process.cwd(), 'workspaces', '.agent_sessions', 'sessions.json');
 
   constructor(
     private readonly modelRouter = new ModelRouterService(),
     private readonly workspaceService = new WorkspaceService(),
-  ) {}
+  ) {
+    this.loadSessionsFromDisk();
+  }
+
+  private loadSessionsFromDisk() {
+    try {
+      if (fs.existsSync(this.storagePath)) {
+        const raw = fs.readFileSync(this.storagePath, 'utf8');
+        const list = JSON.parse(raw) as AgentSessionExecution[];
+        if (Array.isArray(list)) {
+          for (const s of list) {
+            s.filesWrittenSet = new Set(s.filesWritten || []);
+            this.sessions.set(s.sessionId, s);
+          }
+          logger.info('Loaded persistent agent sessions from disk', { count: list.length });
+        }
+      }
+    } catch (err: any) {
+      logger.warn('Could not load persistent agent sessions from disk', { error: err.message });
+    }
+  }
+
+  private persistSessionsToDisk() {
+    try {
+      const dir = path.dirname(this.storagePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const data = Array.from(this.sessions.values()).map((s) => ({
+        ...s,
+        filesWritten: Array.from(s.filesWrittenSet || []),
+        filesWrittenSet: undefined,
+      }));
+      fs.writeFileSync(this.storagePath, JSON.stringify(data, null, 2), 'utf8');
+    } catch (err: any) {
+      logger.warn('Could not persist agent sessions to disk', { error: err.message });
+    }
+  }
 
   private getToolDefinitions(): ToolDefinition[] {
     return [
@@ -181,6 +222,7 @@ export class AgentExecutionService {
     };
 
     this.sessions.set(sessionId, session);
+    this.persistSessionsToDisk();
     this.pausedSessions.delete(sessionId);
     this.cancelledSessions.delete(sessionId);
 
@@ -235,6 +277,7 @@ export class AgentExecutionService {
       currentStep: session.currentStep,
       maxSteps: session.maxSteps,
     });
+    this.persistSessionsToDisk();
 
     return this.executeSessionLoop(session);
   }
@@ -299,17 +342,27 @@ export class AgentExecutionService {
         timestamp: new Date().toISOString(),
       });
 
+      let learnedSopSection = '';
+      try {
+        learnedSopSection = await sopLearningService.getInjectedSopInstructions();
+      } catch {
+        learnedSopSection = '[MANDATORY SOP]: Generate complete folder structure and runnable code. Never stop at a README.md file.';
+      }
+
       const dynamicSystemPrompt = `You are ${roleTitle}, an ultra-high-velocity autonomous AI software engineer inside CodyNex OS operating under a strict 4-MINUTE EXECUTION DEADLINE.
 Time Remaining: ${remainingSec} seconds.
 Your objective: You MUST execute decisive, rapid actions until the user's task is 100% complete and matches the prompt EXACTLY:
 "${session.instruction}"
 
+${learnedSopSection}
+
 Rules for High Velocity & Exact Goal Completion:
 1. Act with urgency: never repeat an action that already succeeded.
 2. If searching or browsing: use exact keywords, find elements immediately, and confirm state.
-3. If coding: write complete files directly without dummy placeholders.
-4. Only invoke 'task_complete' when you have verified that the prompt's requirements are 100% satisfied. If more actions are needed to fulfill the prompt, do them immediately!
-5. If approaching the 4-minute mark, execute final verification and complete.
+3. If coding: write complete files directly across the entire folder structure without dummy placeholders.
+4. STRICT ANTI-README & COMPLETENESS: Never return only a single README.md or markdown document for an implementation task. Generate functional, runnable code files across all required directories.
+5. Only invoke 'task_complete' when you have verified that the prompt's requirements are 100% satisfied. If more actions are needed to fulfill the prompt, do them immediately!
+6. If approaching the 4-minute mark, execute final verification and complete.
 
 Output strictly valid JSON with this shape:
 {
@@ -452,6 +505,7 @@ ${tools.map((t) => `- ${t.name}: ${t.description} (params: ${JSON.stringify(t.pa
         durationMs: stepRecord.durationMs,
         timestamp: new Date().toISOString(),
       });
+      this.persistSessionsToDisk();
 
       // Format compact observation to minimize token consumption and prevent HTTP 429 rate limits
       const obsStr =
@@ -525,6 +579,7 @@ Generate a comprehensive Executive Deliverables Report in markdown:
     }
 
     session.completedAt = new Date().toISOString();
+    this.persistSessionsToDisk();
     socketServer.emit('agent:lifecycle', {
       sessionId: session.sessionId,
       taskId: session.taskId,
@@ -640,6 +695,9 @@ Generate a comprehensive Executive Deliverables Report in markdown:
   pauseSession(sessionId: string): boolean {
     if (this.sessions.has(sessionId)) {
       this.pausedSessions.add(sessionId);
+      const s = this.sessions.get(sessionId);
+      if (s) s.status = 'PAUSED';
+      this.persistSessionsToDisk();
       void browserService.setHumanTakeover(sessionId, true);
       return true;
     }
@@ -649,6 +707,9 @@ Generate a comprehensive Executive Deliverables Report in markdown:
   resumeSession(sessionId: string): boolean {
     if (this.pausedSessions.has(sessionId)) {
       this.pausedSessions.delete(sessionId);
+      const s = this.sessions.get(sessionId);
+      if (s) s.status = 'RUNNING';
+      this.persistSessionsToDisk();
       void browserService.setHumanTakeover(sessionId, false);
       return true;
     }
@@ -659,6 +720,12 @@ Generate a comprehensive Executive Deliverables Report in markdown:
     if (this.sessions.has(sessionId)) {
       this.cancelledSessions.add(sessionId);
       this.pausedSessions.delete(sessionId);
+      const s = this.sessions.get(sessionId);
+      if (s) {
+        s.status = 'CANCELLED';
+        s.completedAt = new Date().toISOString();
+      }
+      this.persistSessionsToDisk();
       return true;
     }
     return false;
@@ -666,6 +733,12 @@ Generate a comprehensive Executive Deliverables Report in markdown:
 
   getSession(sessionId: string): AgentSessionExecution | null {
     return this.sessions.get(sessionId) || null;
+  }
+
+  getAllSessions(): AgentSessionExecution[] {
+    return Array.from(this.sessions.values()).sort(
+      (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+    );
   }
 }
 

@@ -52,4 +52,9 @@ export class MemoryRepository {
   saveKnowledge(data: Partial<KnowledgeDocumentEntity>) {
     return this.kbRepo.save(this.kbRepo.create(data));
   }
+
+  async deleteKnowledge(id: string): Promise<boolean> {
+    const res = await this.kbRepo.delete({ id });
+    return (res.affected ?? 0) > 0;
+  }
 }

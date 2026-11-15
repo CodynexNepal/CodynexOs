@@ -82,6 +82,16 @@ export class DomainController {
     }
   };
 
+  deleteKnowledge = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = String(req.params.id || '');
+      const ok = await this.memoryRepo.deleteKnowledge(id);
+      res.status(STATUS_CODE.OK).json({ success: true, data: { deleted: ok } });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   listRepos = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.engService.listRepos();

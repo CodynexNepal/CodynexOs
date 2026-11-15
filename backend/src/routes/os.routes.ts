@@ -101,6 +101,11 @@ export function createOsRouter(): Router {
     validateDto(CreateKnowledgeDto),
     domainController.createKnowledge,
   );
+  router.delete(
+    '/knowledge/:id',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    domainController.deleteKnowledge,
+  );
 
   router.get('/github/repos', domainController.listRepos);
   router.get('/github/probe', domainController.probeGithub);
@@ -439,8 +444,10 @@ export function createOsRouter(): Router {
   router.post('/browser/sessions/:sessionId/key', osController.browserKeyPress);
 
   router.post('/terminal/sessions/:sessionId/execute', osController.terminalExecute);
+  router.get('/terminal/sessions/:sessionId/history', osController.terminalGetHistory);
   router.post('/terminal/executions/:executionId/cancel', osController.terminalCancel);
 
+  router.get('/agent/sessions', osController.agentGetAllSessions);
   router.get('/agent/sessions/:sessionId', osController.agentGetSession);
   router.post('/agent/sessions/:sessionId/pause', osController.agentPause);
   router.post('/agent/sessions/:sessionId/resume', osController.agentResume);

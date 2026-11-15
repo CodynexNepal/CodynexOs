@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Info, Plus } from "lucide-react";
+import { BookOpen, Info, Plus, Trash2 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -37,10 +37,28 @@ export default function KnowledgePage() {
   const [contentMd, setContentMd] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
   const deptName = (id: string | null) => {
     if (!id) return "Company-Wide (All Agents)";
     return deptsQuery.data?.find((d) => d.id === id)?.name ?? "Department SOP";
+  };
+
+  const handleDelete = async (id: string, sopTitle: string) => {
+    if (!window.confirm(`Are you sure you want to delete SOP "${sopTitle}"?`)) {
+      return;
+    }
+    setDeletingId(id);
+    setDeleteErr(null);
+    try {
+      await codynexApi.knowledge.delete(id);
+      refetch();
+    } catch (err) {
+      setDeleteErr(toApiError(err).message);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -72,6 +90,7 @@ export default function KnowledgePage() {
     >
       <div className="space-y-4">
         {error && <ErrorBanner message={error} onRetry={refetch} />}
+        {deleteErr && <ErrorBanner message={deleteErr} />}
 
         <Card className="flex flex-wrap items-center justify-between gap-3 bg-surface p-4">
           <div className="flex items-start gap-2.5 text-xs text-ink-muted">
@@ -106,9 +125,20 @@ export default function KnowledgePage() {
                       Scope: {deptName(doc.departmentId)}
                     </p>
                   </div>
-                  <Badge tone={doc.isTrusted ? "green" : "amber"}>
-                    {doc.isTrusted ? "Trusted SOP" : "Untrusted"}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={doc.isTrusted ? "green" : "amber"}>
+                      {doc.isTrusted ? "Trusted SOP" : "Untrusted"}
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(doc.id, doc.title)}
+                      disabled={deletingId === doc.id}
+                      title="Delete SOP"
+                      className="p-1 rounded text-ink-muted hover:text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
                 <p className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-ink-muted">
                   {doc.contentMd}

@@ -84,6 +84,8 @@ export const codynexApi = {
     list: () => api.get("/knowledge"),
     create: (body: { title: string; contentMd: string; departmentId?: string }) =>
       api.post("/knowledge", body),
+    delete: (id: string) =>
+      api.delete<{ success: boolean; data: { deleted: boolean } }>(`/knowledge/${id}`),
   },
   github: {
     repos: () => api.get("/github/repos"),
@@ -425,9 +427,13 @@ export const codynexApi = {
   terminal: {
     execute: (sessionId: string, command: string, cwd?: string) =>
       api.post(`/terminal/sessions/${sessionId}/execute`, { command, cwd }),
+    getHistory: (sessionId: string) =>
+      api.get<{ success: boolean; data: any[] }>(`/terminal/sessions/${sessionId}/history`),
     cancel: (executionId: string) => api.post(`/terminal/executions/${executionId}/cancel`),
   },
   autonomousAgent: {
+    listSessions: () =>
+      api.get<{ success: boolean; data: any[] }>("/agent/sessions"),
     getSession: (sessionId: string) =>
       api.get<{ success: boolean; data: Record<string, unknown> | null }>(`/agent/sessions/${sessionId}`),
     run: (body: {

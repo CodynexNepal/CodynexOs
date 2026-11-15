@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Activity,
   Brain,
@@ -12,10 +12,13 @@ import {
   Cpu,
   FileCode2,
   Globe,
+  History,
   MessageSquare,
   Mic,
   Pause,
   Play,
+  Plus,
+  RefreshCw,
   Send,
   ShieldCheck,
   Sparkles,
@@ -454,9 +457,21 @@ export function AutonomousComputerConsole({
   repoId: propRepoId,
   className,
 }: AutonomousComputerConsoleProps) {
-  const [sessionId, setSessionId] = useState(initialSessionId);
+  const [sessionId, setSessionId] = useState(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("codynex_active_session_id");
+      if (stored) return stored;
+    }
+    return initialSessionId;
+  });
+  const [sessionList, setSessionList] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<WorkspaceViewMode>("SPLIT");
-  const [instruction, setInstruction] = useState("");
+  const [instruction, setInstruction] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("codynex_workspace_draft_prompt") || "";
+    }
+    return "";
+  });
   const [agentStatus, setAgentStatus] = useState<
     "IDLE" | "PLANNING" | "RUNNING" | "WAITING" | "PAUSED" | "COMPLETED" | "FAILED" | "CANCELLED"
   >("IDLE");
@@ -479,6 +494,29 @@ export function AutonomousComputerConsole({
   const [selectedRepoId, setSelectedRepoId] = useState<string>(propRepoId || "");
   const selectedRepo = repos.find((r) => r.id === selectedRepoId) || repos[0];
 
+  // Keep localStorage synced with current active sessionId
+  useEffect(() => {
+    if (typeof window !== "undefined" && sessionId) {
+      localStorage.setItem("codynex_active_session_id", sessionId);
+    }
+  }, [sessionId]);
+
+  // Load existing session history list
+  const refreshSessionList = useCallback(async () => {
+    try {
+      const res = await codynexApi.autonomousAgent.listSessions();
+      if (Array.isArray(res.data?.data)) {
+        setSessionList(res.data.data);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshSessionList();
+  }, [refreshSessionList]);
+
   useEffect(() => {
     const loadRepos = async () => {
       try {
@@ -498,52 +536,121 @@ export function AutonomousComputerConsole({
     void loadRepos();
   }, [selectedRepoId]);
 
-  // Restore active backend session if user navigated away and returned
-  useEffect(() => {
-    let isMounted = true;
-    const fetchExistingSession = async () => {
-      try {
-        const res = await codynexApi.autonomousAgent.getSession(sessionId);
-        if (res.data?.data && isMounted) {
-          const s = res.data.data as Record<string, unknown>;
-          if (s.status && typeof s.status === "string") {
-            setAgentStatus(
-              s.status as
-                | "IDLE"
-                | "PLANNING"
-                | "RUNNING"
-                | "WAITING"
-                | "PAUSED"
-                | "COMPLETED"
-                | "FAILED"
-                | "CANCELLED"
-            );
-          }
-          if (typeof s.currentStep === "number") setCurrentStep(s.currentStep);
-          if (typeof s.maxSteps === "number") setMaxSteps(s.maxSteps);
-          if (s.finalAnswer) setFinalReport(String(s.finalAnswer));
-          if (Array.isArray(s.steps) && s.steps.length > 0) {
-            setStepLogs(
-              s.steps.map((st: Record<string, unknown>) => ({
-                step: typeof st.stepIndex === "number" ? st.stepIndex : 1,
-                thought: typeof st.thought === "string" ? st.thought : undefined,
-                tool: typeof st.tool === "string" ? st.tool : "unknown",
-                output: st.toolOutput,
-                status: (st.status as "EXECUTING" | "SUCCESS" | "FAILED") || "SUCCESS",
-                timestamp: typeof st.timestamp === "string" ? st.timestamp : new Date().toISOString(),
-              }))
-            );
+  // Restore active backend session if user refreshed or returned
+  const fetchExistingSession = useCallback(async () => {
+    try {
+      let resolvedId = sessionId;
+      let res = await codynexApi.autonomousAgent.getSession(resolvedId);
+
+      // If requested session has no data yet, check session list to pick the active or most recent session
+      if (!res.data?.data) {
+        const listRes = await codynexApi.autonomousAgent.listSessions();
+        const list = listRes.data?.data;
+        if (Array.isArray(list) && list.length > 0) {
+          const activeOrRecent =
+            list.find((s: any) => s.status === "RUNNING" || s.status === "PLANNING") || list[0];
+          if (activeOrRecent?.sessionId) {
+            resolvedId = activeOrRecent.sessionId;
+            setSessionId(resolvedId);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("codynex_active_session_id", resolvedId);
+            }
+            res = await codynexApi.autonomousAgent.getSession(resolvedId);
           }
         }
-      } catch {
-        // session not started yet, ignore
       }
-    };
-    void fetchExistingSession();
-    return () => {
-      isMounted = false;
-    };
+
+      if (res.data?.data) {
+        const s = res.data.data as Record<string, unknown>;
+        if (s.status && typeof s.status === "string") {
+          setAgentStatus(
+            s.status as
+              | "IDLE"
+              | "PLANNING"
+              | "RUNNING"
+              | "WAITING"
+              | "PAUSED"
+              | "COMPLETED"
+              | "FAILED"
+              | "CANCELLED"
+          );
+        }
+        if (typeof s.currentStep === "number") setCurrentStep(s.currentStep);
+        if (typeof s.maxSteps === "number") setMaxSteps(s.maxSteps);
+        if (s.finalAnswer) setFinalReport(String(s.finalAnswer));
+
+        // Restore prompt so instruction is never empty/null on refresh!
+        if (s.instruction && typeof s.instruction === "string") {
+          setInstruction(s.instruction);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("codynex_workspace_draft_prompt", s.instruction);
+          }
+        }
+
+        // Restore agent role and provider
+        if (s.roleTitle && typeof s.roleTitle === "string") {
+          setSelectedAgentRole(s.roleTitle);
+        }
+        if (s.effectiveProvider && typeof s.effectiveProvider === "string") {
+          setSelectedProvider(s.effectiveProvider);
+          setActiveEngine(s.effectiveProvider);
+        }
+
+        // Restore remaining countdown timer if session is currently executing
+        if (s.startedAt && (s.status === "RUNNING" || s.status === "PLANNING")) {
+          const elapsedSec = Math.round((Date.now() - new Date(s.startedAt as string).getTime()) / 1000);
+          setRemainingSec(Math.max(0, 240 - elapsedSec));
+        }
+
+        // Restore step logs
+        if (Array.isArray(s.steps) && s.steps.length > 0) {
+          setStepLogs(
+            s.steps.map((st: Record<string, unknown>) => ({
+              step: typeof st.stepIndex === "number" ? st.stepIndex : 1,
+              thought: typeof st.thought === "string" ? st.thought : undefined,
+              tool: typeof st.tool === "string" ? st.tool : "unknown",
+              output: st.toolOutput,
+              status: (st.status as "EXECUTING" | "SUCCESS" | "FAILED") || "SUCCESS",
+              timestamp: typeof st.timestamp === "string" ? st.timestamp : new Date().toISOString(),
+            }))
+          );
+        }
+      }
+    } catch {
+      // session not started yet, ignore
+    }
   }, [sessionId]);
+
+  useEffect(() => {
+    void fetchExistingSession();
+  }, [fetchExistingSession]);
+
+  // Live polling while running to recover seamlessly from page refresh or socket disconnects
+  useEffect(() => {
+    if (agentStatus !== "RUNNING" && agentStatus !== "PLANNING") return;
+    const interval = setInterval(() => {
+      void fetchExistingSession();
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [agentStatus, fetchExistingSession]);
+
+  // Start a fresh, clean session
+  const handleStartNewSession = () => {
+    const newId = `codynex_session_${Date.now()}`;
+    setSessionId(newId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("codynex_active_session_id", newId);
+      localStorage.removeItem("codynex_workspace_draft_prompt");
+    }
+    setInstruction("");
+    setAgentStatus("IDLE");
+    setCurrentStep(0);
+    setMaxSteps(30);
+    setRemainingSec(null);
+    setActiveEngine(null);
+    setStepLogs([]);
+    setFinalReport(null);
+  };
 
   // Trigger agent execution loop
   const handleLaunchAgent = async () => {
@@ -555,6 +662,11 @@ export function AutonomousComputerConsole({
     setStepLogs([]);
     setAgentStatus("PLANNING");
 
+    if (typeof window !== "undefined") {
+      localStorage.setItem("codynex_workspace_draft_prompt", cleanPrompt);
+      localStorage.setItem("codynex_active_session_id", sessionId);
+    }
+
     try {
       await codynexApi.autonomousAgent.run({
         sessionId,
@@ -563,6 +675,7 @@ export function AutonomousComputerConsole({
         preferredProvider: selectedProvider || undefined,
         maxSteps,
       });
+      void refreshSessionList();
     } catch {
       setAgentStatus("FAILED");
     } finally {
@@ -719,6 +832,45 @@ export function AutonomousComputerConsole({
                 ⚡ {activeEngine.toUpperCase()}
               </span>
             )}
+          </div>
+
+          {/* Session Switcher & New Session Button */}
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 rounded-lg border border-[#30363d] bg-[#0d1117] px-2.5 py-1 text-xs">
+              <History className="h-3.5 w-3.5 text-[#58a6ff] shrink-0" />
+              <select
+                value={sessionId}
+                onChange={(e) => {
+                  const targetId = e.target.value;
+                  setSessionId(targetId);
+                  if (typeof window !== "undefined") {
+                    localStorage.setItem("codynex_active_session_id", targetId);
+                  }
+                }}
+                className="bg-transparent text-xs text-white focus:outline-none max-w-[160px] sm:max-w-[220px] truncate"
+              >
+                <option value={sessionId} className="bg-[#161b22] text-white">
+                  {sessionId} {agentStatus !== "IDLE" ? `(${agentStatus})` : ""}
+                </option>
+                {sessionList
+                  .filter((s) => s.sessionId !== sessionId)
+                  .map((s) => (
+                    <option key={s.sessionId} value={s.sessionId} className="bg-[#161b22] text-white">
+                      {s.sessionId} ({s.status}) - {s.instruction ? s.instruction.slice(0, 30) : "Session"}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleStartNewSession}
+              className="flex items-center gap-1 rounded-lg border border-[#30363d] bg-[#21262d] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#30363d] transition-colors"
+              title="Start a new clean autonomous session"
+            >
+              <Plus className="h-3.5 w-3.5 text-[#9FE870]" />
+              <span className="hidden sm:inline">New Session</span>
+            </button>
           </div>
         </div>
 
@@ -928,7 +1080,13 @@ export function AutonomousComputerConsole({
             <textarea
               rows={3}
               value={instruction}
-              onChange={(e) => setInstruction(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setInstruction(val);
+                if (typeof window !== "undefined") {
+                  localStorage.setItem("codynex_workspace_draft_prompt", val);
+                }
+              }}
               placeholder="e.g. Inspect the Aliza Wears frontend, run tests in the terminal, add the product carousel component, and verify browser navigation..."
               className="w-full rounded-lg border border-[#30363d] bg-[#0d1117] p-3 text-xs text-white placeholder:text-[#8b949e] focus:border-[#58a6ff] focus:outline-none"
             />

@@ -49,6 +49,54 @@ export function LiveInteractiveTerminal({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [outputLines]);
 
+  // Restore execution history for session on refresh or session change
+  useEffect(() => {
+    let isMounted = true;
+    const fetchHistory = async () => {
+      try {
+        const res = await codynexApi.terminal.getHistory(sessionId);
+        const list = res.data?.data;
+        if (Array.isArray(list) && list.length > 0 && isMounted) {
+          const lines: Array<{ type: "cmd" | "stdout" | "stderr" | "system"; text: string; timestamp: string }> = [
+            {
+              type: "system",
+              text: "CodyNex OS Interactive Terminal Shell [Version 2.0.0]\nRestored session execution history.",
+              timestamp: new Date().toLocaleTimeString(),
+            },
+          ];
+          for (const rec of list) {
+            lines.push({
+              type: "cmd",
+              text: `$ ${rec.command}`,
+              timestamp: rec.startedAt ? new Date(rec.startedAt).toLocaleTimeString() : new Date().toLocaleTimeString(),
+            });
+            if (rec.stdout) {
+              lines.push({
+                type: "stdout",
+                text: rec.stdout,
+                timestamp: rec.finishedAt ? new Date(rec.finishedAt).toLocaleTimeString() : new Date().toLocaleTimeString(),
+              });
+            }
+            if (rec.stderr) {
+              lines.push({
+                type: "stderr",
+                text: rec.stderr,
+                timestamp: rec.finishedAt ? new Date(rec.finishedAt).toLocaleTimeString() : new Date().toLocaleTimeString(),
+              });
+            }
+          }
+          setOutputLines(lines);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void fetchHistory();
+    return () => {
+      isMounted = false;
+    };
+  }, [sessionId]);
+
   // Execute terminal command
   const runCommand = async (commandToRun?: string) => {
     const cmd = (commandToRun || inputCmd).trim();

@@ -19,6 +19,7 @@ import {
   ScrollText,
   Settings,
   ShieldCheck,
+  Sparkles,
   Terminal,
   Users,
   type LucideIcon,
@@ -41,6 +42,7 @@ export const OS_NAVIGATION: NavGroup[] = [
     items: [
       { label: "Overview", href: "/overview", icon: LayoutDashboard },
       { label: "Autonomous Workspace", href: "/workspace", icon: Cpu },
+      { label: "Agent Responses", href: "/agent-responses", icon: Sparkles },
       { label: "AI Command Center", href: "/command", icon: Terminal },
       { label: "Notifications", href: "/notifications", icon: Bell },
     ],

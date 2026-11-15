@@ -472,14 +472,19 @@ export class OrchestratorService {
 
         const aiRes = await this.modelRouter.complete(
           {
-            systemPrompt: `${emp?.systemInstruction || ''}\nReturn JSON with keys: summary, files (array of {path, content}), deliverables (array of {phase, details}), risks (array). The files array is MANDATORY for an implementation task: return one or more complete, runnable source files with non-empty content. Do not return an analysis-only report. Write complete TypeScript/Node/README files. Every file returned will be written to disk in the real repository and committed to git.`,
+            systemPrompt: `${emp?.systemInstruction || ''}
+Return JSON with keys: summary, files (array of {path, content}), deliverables (array of {phase, details}), risks (array).
+MANDATORY FOLDER STRUCTURE & CODE COMPLETENESS:
+- You MUST scaffold and write the complete repository folder structure (e.g., src/index.ts, src/controllers/*, src/services/*, src/models/*, src/routes/*, package.json, tsconfig.json).
+- STRICT ANTI-README RULE: NEVER return only a single README.md or markdown documentation file. An implementation task MUST produce functional, runnable source code files. Generating only documentation is considered a total failure and will be rejected.
+- Every file returned will be written to disk in the real repository and committed to git.`,
             userPrompt: `Target Repository: ${targetRepo?.owner || 'workspace'}/${targetRepo?.name || 'repository'} (branch: ${branchName})\nTrusted Company SOPs:\n${
               sops.length > 0
                 ? sops.map((s) => `- ${s.title}: ${s.contentMd.slice(0, 300)}`).join('\n')
                 : 'None'
             }\n\nTask:\n${wrapped}`,
             responseFormat: 'json',
-            maxOutputTokens: 8192,
+            maxOutputTokens: 4096,
           },
           {
             taskId: task.id,
@@ -521,6 +526,15 @@ export class OrchestratorService {
           );
           if (validFiles.length === 0) {
             throw new Error('Code generation returned no valid source files; the task cannot be completed without a workspace change.');
+          }
+
+          const hasExecutableSourceCode = validFiles.some((f) => {
+            const p = f.path.trim().toLowerCase();
+            return !p.endsWith('.md') && !p.endsWith('.txt');
+          });
+
+          if (!hasExecutableSourceCode) {
+            throw new Error('Code generation rejected: The AI agent only generated documentation or README files without functional source code or project structure. A complete implementation requires executable code files (e.g., .ts, .js, .json, .py, .html).');
           }
 
           // Live Codex streaming broadcast: stream each file edit event over Socket.io
@@ -681,6 +695,24 @@ export class OrchestratorService {
             : `codynex/task-${task.id.slice(0, 6)}`;
         if (!repoId) {
           throw new Error('Missing repoId for github_push_pr task.');
+        }
+
+        // Verify workspace completeness: ensure repo contains functional source code, not just a lone README.md
+        try {
+          const workspaceFiles = await this.engineeringService.listWorkspaceFiles(repoId);
+          if (workspaceFiles && Array.isArray(workspaceFiles.entries) && workspaceFiles.entries.length > 0) {
+            const hasRealSourceFiles = workspaceFiles.entries.some((e: any) => {
+              const name = (e.name || e.path || '').toLowerCase();
+              return !name.endsWith('.md') && !name.endsWith('.txt') && !name.startsWith('.');
+            });
+            if (!hasRealSourceFiles) {
+              throw new Error('Refusing to push to GitHub: Repository workspace contains only documentation or README files without functional source code or project structure.');
+            }
+          }
+        } catch (checkErr: any) {
+          if (checkErr.message?.includes('Refusing to push')) {
+            throw checkErr;
+          }
         }
 
         await this.reportStep({

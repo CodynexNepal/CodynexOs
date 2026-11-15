@@ -18,6 +18,8 @@ const SETTING_ENV_MAP: Record<string, string> = {
   hugging_face_api_key: dotEnvConfig.HUGGINGFACE_API_KEY,
   opencode_api_key: dotEnvConfig.OPENCODE_API_KEY,
   open_code_api_key: dotEnvConfig.OPENCODE_API_KEY,
+  open_code_api: dotEnvConfig.OPENCODE_API_KEY,
+  opencode_api: dotEnvConfig.OPENCODE_API_KEY,
   opencode_base_url: dotEnvConfig.OPENCODE_BASE_URL,
   github_token: dotEnvConfig.GITHUB_TOKEN,
   whatsapp_access_token: dotEnvConfig.WHATSAPP_ACCESS_TOKEN,
