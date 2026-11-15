@@ -9,6 +9,8 @@ import { logger } from '../utils/logger.util';
 import { QaVerdict } from '../constant/enum.constant';
 import { AppDataSource } from '../database/database-source';
 import { QaReportEntity } from '../entities/qa-report.entity';
+import { TaskEntity } from '../entities/task.entity';
+import { AiEmployeeEntity } from '../entities/ai-employee.entity';
 
 export interface ReleaseGateCheck {
   gateNumber: number;
@@ -49,7 +51,67 @@ export interface ReleaseCertificate {
 }
 
 export class VerificationGateService {
+  private latestCertificate: ReleaseCertificate | null = null;
+
   constructor(private readonly workspaceService = new WorkspaceService()) {}
+
+  /**
+   * Resolve an existing active repository directory if the default workspace path is not present.
+   */
+  private async resolveRepoDir(owner: string, name: string): Promise<{ repoDir: string; owner: string; name: string }> {
+    const directDir = this.workspaceService.getRepoDir(owner, name);
+    try {
+      await fs.access(directDir);
+      return { repoDir: directDir, owner, name };
+    } catch {
+      try {
+        const rootWorkspaces = path.resolve(process.cwd(), 'workspaces');
+        const orgs = await fs.readdir(rootWorkspaces);
+        for (const org of orgs) {
+          const orgPath = path.join(rootWorkspaces, org);
+          const orgStat = await fs.stat(orgPath);
+          if (orgStat.isDirectory()) {
+            const repos = await fs.readdir(orgPath);
+            for (const repo of repos) {
+              const fullPath = path.join(orgPath, repo);
+              const rStat = await fs.stat(fullPath);
+              if (rStat.isDirectory()) {
+                return { repoDir: fullPath, owner: org, name: repo };
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      const parentDir = path.resolve(process.cwd(), '..');
+      try {
+        await fs.access(path.join(parentDir, '.git'));
+        return { repoDir: parentDir, owner: 'Codynex', name: 'CodyNexOs' };
+      } catch {
+        return { repoDir: directDir, owner, name };
+      }
+    }
+  }
+
+  /**
+   * Get the most recent real-time release quality certificate.
+   */
+  async getLatestCertificate(params?: {
+    owner?: string;
+    name?: string;
+    taskId?: string;
+  }): Promise<ReleaseCertificate> {
+    if (this.latestCertificate) {
+      return this.latestCertificate;
+    }
+    return this.evaluateReleaseGates({
+      owner: params?.owner || 'organization',
+      name: params?.name || 'workspace',
+      taskId: params?.taskId,
+    });
+  }
 
   /**
    * Run all 7 release quality gates for a repository workspace.
@@ -63,16 +125,19 @@ export class VerificationGateService {
     expectedDeliverables?: string[];
   }): Promise<ReleaseCertificate> {
     const { owner, name, taskId, reviewerEmployeeId, previewUrl } = params;
-    const repoDir = this.workspaceService.getRepoDir(owner, name);
+    const resolved = await this.resolveRepoDir(owner, name);
+    const activeOwner = resolved.owner;
+    const activeName = resolved.name;
+    const repoDir = resolved.repoDir;
     const gates: ReleaseGateCheck[] = [];
     const startTime = Date.now();
 
-    logger.info('Starting 7-Gate Verification Pipeline', { owner, name, taskId });
+    logger.info('Starting 7-Gate Verification Pipeline', { owner: activeOwner, name: activeName, repoDir, taskId });
 
     // Broadcast gate pipeline start
     socketServer.emit('qa:pipeline_started', {
-      owner,
-      name,
+      owner: activeOwner,
+      name: activeName,
       taskId,
       timestamp: new Date().toISOString(),
     });
@@ -444,8 +509,8 @@ export class VerificationGateService {
 
     const certificate: ReleaseCertificate = {
       certificateId: certId,
-      repoOwner: owner,
-      repoName: name,
+      repoOwner: activeOwner,
+      repoName: activeName,
       taskId,
       evaluatedAt: new Date().toISOString(),
       verdict: finalVerdict,
@@ -456,27 +521,73 @@ export class VerificationGateService {
       summary: certSummary,
     };
 
+    // Cache latest real-time certificate in memory
+    this.latestCertificate = certificate;
+
     // Save report in Database
     try {
-      const qaRepo = AppDataSource.getRepository(QaReportEntity);
-      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-      const safeTaskId = taskId && UUID_REGEX.test(taskId) ? taskId : '00000000-0000-0000-0000-000000000000';
-      const safeReviewerId = reviewerEmployeeId && UUID_REGEX.test(reviewerEmployeeId) ? reviewerEmployeeId : null;
+      if (AppDataSource.isInitialized) {
+        const qaRepo = AppDataSource.getRepository(QaReportEntity);
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-      const report = qaRepo.create({
-        taskId: safeTaskId,
-        reviewerEmployeeId: safeReviewerId,
-        verdict: finalVerdict,
-        checksExecuted: gates.map((g) => ({
+        let safeTaskId: string | null = null;
+        if (taskId && UUID_REGEX.test(taskId)) {
+          try {
+            const taskRepo = AppDataSource.getRepository(TaskEntity);
+            const exists = await taskRepo.findOne({ where: { id: taskId }, select: ['id'] });
+            if (exists) {
+              safeTaskId = taskId;
+            }
+          } catch {
+            safeTaskId = null;
+          }
+        }
+
+        let safeReviewerId: string | null = null;
+        if (reviewerEmployeeId && UUID_REGEX.test(reviewerEmployeeId)) {
+          try {
+            const empRepo = AppDataSource.getRepository(AiEmployeeEntity);
+            const empExists = await empRepo.findOne({ where: { id: reviewerEmployeeId }, select: ['id'] });
+            if (empExists) {
+              safeReviewerId = reviewerEmployeeId;
+            }
+          } catch {
+            safeReviewerId = null;
+          }
+        }
+
+        const checksExecuted = gates.map((g) => ({
           name: `Gate ${g.gateNumber}: ${g.gateName}`,
           status: g.status,
           output: `[Score: ${g.score}%] ${g.details}`,
-        })),
-        failedComponent: finalVerdict === QaVerdict.FAILED ? `${owner}/${name}` : null,
-        summary: certSummary,
-      });
-      await qaRepo.save(report);
-      logger.info('Saved QA Release Certificate to database', { reportId: report.id, certId, finalVerdict });
+        }));
+
+        try {
+          const report = qaRepo.create({
+            taskId: safeTaskId,
+            reviewerEmployeeId: safeReviewerId,
+            verdict: finalVerdict,
+            checksExecuted,
+            failedComponent: finalVerdict === QaVerdict.FAILED ? `${owner}/${name}` : null,
+            summary: certSummary,
+          });
+          await qaRepo.save(report);
+          logger.info('Saved QA Release Certificate to database', { reportId: report.id, certId, finalVerdict });
+        } catch (saveErr: any) {
+          // If foreign key constraint failed, retry with unlinked task and reviewer
+          logger.warn('Foreign key check failed, retrying unlinked QA report save', { error: saveErr.message });
+          const unlinkedReport = qaRepo.create({
+            taskId: null,
+            reviewerEmployeeId: null,
+            verdict: finalVerdict,
+            checksExecuted,
+            failedComponent: finalVerdict === QaVerdict.FAILED ? `${owner}/${name}` : null,
+            summary: certSummary,
+          });
+          await qaRepo.save(unlinkedReport);
+          logger.info('Saved QA Release Certificate to database (unlinked)', { reportId: unlinkedReport.id, certId, finalVerdict });
+        }
+      }
     } catch (dbErr: any) {
       logger.warn('Could not persist QA Report Entity to DB', { error: dbErr.message });
     }

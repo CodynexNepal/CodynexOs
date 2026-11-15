@@ -13,6 +13,7 @@ import {
   FileCode2,
   Globe,
   MessageSquare,
+  Mic,
   Pause,
   Play,
   Send,
@@ -26,6 +27,7 @@ import { LiveBrowserViewport } from "@/components/domain/LiveBrowserViewport";
 import { LiveInteractiveTerminal } from "@/components/domain/LiveInteractiveTerminal";
 import { LiveCodexFileEditor } from "@/components/domain/LiveCodexFileEditor";
 import { DeliveryScorecard } from "@/components/domain/DeliveryScorecard";
+import { NepaliVoiceIntelligenceConsole } from "@/components/domain/NepaliVoiceIntelligenceConsole";
 import { useDomainSocket } from "@/hooks/useDomainSocket";
 import { codynexApi } from "@/lib/codynexOs";
 import { cn } from "@/lib/utils";
@@ -36,7 +38,7 @@ export interface AutonomousComputerConsoleProps {
   className?: string;
 }
 
-type WorkspaceViewMode = "SPLIT" | "BROWSER" | "CODE" | "TERMINAL" | "FEED" | "SCORECARD";
+type WorkspaceViewMode = "SPLIT" | "BROWSER" | "CODE" | "TERMINAL" | "FEED" | "SCORECARD" | "VOICE";
 
 interface AgentStepLog {
   step: number;
@@ -452,19 +454,25 @@ export function AutonomousComputerConsole({
   repoId: propRepoId,
   className,
 }: AutonomousComputerConsoleProps) {
-  const [sessionId] = useState(initialSessionId);
+  const [sessionId, setSessionId] = useState(initialSessionId);
   const [viewMode, setViewMode] = useState<WorkspaceViewMode>("SPLIT");
   const [instruction, setInstruction] = useState("");
   const [agentStatus, setAgentStatus] = useState<
     "IDLE" | "PLANNING" | "RUNNING" | "WAITING" | "PAUSED" | "COMPLETED" | "FAILED" | "CANCELLED"
   >("IDLE");
   const [currentStep, setCurrentStep] = useState(0);
-  const [maxSteps, setMaxSteps] = useState(15);
+  const [maxSteps, setMaxSteps] = useState(30);
+  const [remainingSec, setRemainingSec] = useState<number | null>(null);
+  const [activeEngine, setActiveEngine] = useState<string | null>(null);
   const [stepLogs, setStepLogs] = useState<AgentStepLog[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [finalReport, setFinalReport] = useState<string | null>(null);
   const [replyInput, setReplyInput] = useState("");
   const [isReplying, setIsReplying] = useState(false);
+  const [selectedAgentRole, setSelectedAgentRole] = useState(
+    "Autonomous Software & Computer Engineer"
+  );
+  const [selectedProvider, setSelectedProvider] = useState("");
 
   // Connected Repositories
   const [repos, setRepos] = useState<RepoOption[]>([]);
@@ -551,7 +559,8 @@ export function AutonomousComputerConsole({
       await codynexApi.autonomousAgent.run({
         sessionId,
         instruction: cleanPrompt,
-        roleTitle: "Autonomous Software & Computer Engineer",
+        roleTitle: selectedAgentRole,
+        preferredProvider: selectedProvider || undefined,
         maxSteps,
       });
     } catch {
@@ -628,6 +637,9 @@ export function AutonomousComputerConsole({
       setAgentStatus("RUNNING");
       if (typeof data.step === "number") setCurrentStep(data.step);
       if (typeof data.maxSteps === "number") setMaxSteps(data.maxSteps);
+      if (typeof data.remainingSec === "number") setRemainingSec(data.remainingSec);
+      if (typeof data.provider === "string") setActiveEngine(data.provider);
+      if (typeof data.jumpedToProvider === "string") setActiveEngine(data.jumpedToProvider);
     } else if (eventName === "agent:tool_started") {
       setStepLogs((prev) => [
         ...prev,
@@ -694,6 +706,19 @@ export function AutonomousComputerConsole({
             >
               {agentStatus} {currentStep > 0 && `(Step ${currentStep}/${maxSteps})`}
             </span>
+
+            {remainingSec !== null && agentStatus === "RUNNING" && (
+              <span className="flex items-center gap-1.5 rounded bg-indigo-500/20 border border-indigo-500/40 px-2.5 py-1 font-mono text-xs font-bold text-indigo-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-400 animate-ping" />
+                ⏱️ 4-Min Budget: {Math.floor(remainingSec / 60)}m {remainingSec % 60}s left
+              </span>
+            )}
+
+            {activeEngine && agentStatus === "RUNNING" && (
+              <span className="flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-1 font-mono text-[11px] font-bold text-emerald-300">
+                ⚡ {activeEngine.toUpperCase()}
+              </span>
+            )}
           </div>
         </div>
 
@@ -766,6 +791,19 @@ export function AutonomousComputerConsole({
               <ShieldCheck className="h-3 w-3" />
               Scorecard (7 Gates)
             </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("VOICE")}
+              className={cn(
+                "rounded px-2.5 py-1 font-semibold transition-colors flex items-center gap-1.5",
+                viewMode === "VOICE"
+                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md"
+                  : "text-[#8b949e] hover:text-white"
+              )}
+            >
+              <Mic className="h-3 w-3 text-blue-400" />
+              Nepali Voice AI
+            </button>
           </div>
 
           {/* Pause / Resume / Cancel Agent Buttons */}
@@ -821,6 +859,69 @@ export function AutonomousComputerConsole({
             <span className="text-[11px] text-[#8b949e] font-mono">
               Direct Natural Language Prompting
             </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-[#8b949e]">
+                Autonomous Specialist Agent
+              </label>
+              <select
+                value={selectedAgentRole}
+                onChange={(e) => setSelectedAgentRole(e.target.value)}
+                disabled={agentStatus === "RUNNING"}
+                className="h-8 w-full rounded border border-[#30363d] bg-[#0d1117] px-2.5 text-xs text-white focus:border-[#58a6ff] focus:outline-none disabled:opacity-50"
+              >
+                <option value="Autonomous Software & Computer Engineer">
+                  Autonomous Software & Computer Engineer (Generalist)
+                </option>
+                <option value="Senior Full-Stack & Architecture Lead">
+                  Senior Full-Stack & Architecture Lead
+                </option>
+                <option value="Frontend UI/UX Specialist">
+                  Frontend UI/UX Specialist
+                </option>
+                <option value="Backend Lead & Database Engineer">
+                  Backend Lead & Database Engineer
+                </option>
+                <option value="QA, Testing & Verification Specialist">
+                  QA, Testing & Verification Specialist
+                </option>
+                <option value="DevOps & Deployment Engineer">
+                  DevOps & Deployment Engineer
+                </option>
+                <option value="Autonomous Web Researcher & Analyst">
+                  Autonomous Web Researcher & Analyst
+                </option>
+                <option value="Growth Marketing & Social Media Lead">
+                  Growth Marketing & Social Media Lead
+                </option>
+                <option value="Product Manager & Technical Writer">
+                  Product Manager & Technical Writer
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-[#8b949e]">
+                AI Model Engine & Provider
+              </label>
+              <select
+                value={selectedProvider}
+                onChange={(e) => setSelectedProvider(e.target.value)}
+                disabled={agentStatus === "RUNNING"}
+                className="h-8 w-full rounded border border-[#30363d] bg-[#0d1117] px-2.5 text-xs text-white focus:border-[#58a6ff] focus:outline-none disabled:opacity-50"
+              >
+                <option value="">Auto ($0 Free Intelligent Routing)</option>
+                <option value="groq">Groq LPUs (Ultra-Fast 70B)</option>
+                <option value="gemini">Google Gemini (1M Long-Context)</option>
+                <option value="opencode">OpenCode API (Open Source Coding)</option>
+                <option value="openrouter">OpenRouter (18+ Free Models)</option>
+                <option value="cloudflare">Cloudflare Workers AI (10k Neurons)</option>
+                <option value="huggingface">Hugging Face Serverless</option>
+                <option value="ollama">Ollama (100% Offline Hardware)</option>
+              </select>
+            </div>
           </div>
 
           <div className="relative">
@@ -969,7 +1070,9 @@ export function AutonomousComputerConsole({
       {viewMode === "SPLIT" && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* Top Left: Live Browser Screencast */}
-          <LiveBrowserViewport sessionId={sessionId} />
+          <div className="h-[560px] xl:h-[660px] flex flex-col">
+            <LiveBrowserViewport sessionId={sessionId} className="w-full h-full flex-1" />
+          </div>
 
           {/* Top Right: Code Streamer */}
           <LiveCodexFileEditor repoId={selectedRepo?.id} />
@@ -1005,8 +1108,8 @@ export function AutonomousComputerConsole({
       )}
 
       {viewMode === "BROWSER" && (
-        <div className="w-full">
-          <LiveBrowserViewport sessionId={sessionId} className="min-h-[720px] xl:min-h-[840px]" />
+        <div className="w-full h-[calc(100vh-220px)] min-h-[750px] flex flex-col">
+          <LiveBrowserViewport sessionId={sessionId} className="w-full h-full flex-1" />
         </div>
       )}
 
@@ -1045,6 +1148,20 @@ export function AutonomousComputerConsole({
         <DeliveryScorecard
           taskId={sessionId}
         />
+      )}
+
+      {viewMode === "VOICE" && (
+        <div className="w-full h-[calc(100vh-230px)] min-h-[680px]">
+          <NepaliVoiceIntelligenceConsole
+            activeSessionId={sessionId}
+            activeWorkspace={selectedRepo?.name || "HostelGhar"}
+            onExecutionStarted={(newSessionId) => {
+              setSessionId(newSessionId);
+              setViewMode("SPLIT");
+            }}
+            className="w-full h-full"
+          />
+        </div>
       )}
     </div>
   );

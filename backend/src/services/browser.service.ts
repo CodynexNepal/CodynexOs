@@ -124,7 +124,11 @@ export class BrowserService {
         cdp.on('Page.screencastFrame', async (params: { data: string; sessionId: number }) => {
           try {
             await cdp.send('Page.screencastFrameAck', { sessionId: params.sessionId });
-          } catch {}
+          } catch (error) {
+            logger.debug('Failed to acknowledge screencast frame', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
           state.lastScreenshot = params.data;
           socketServer.emit('browser:screenshot', {
             sessionId,
@@ -265,7 +269,9 @@ export class BrowserService {
     try {
       const loc = page.locator(sel);
       if ((await loc.count()) > 0) return loc.first();
-    } catch {}
+    } catch {
+      // Ignore invalid selectors and continue with resilient fallbacks.
+    }
 
     // 2. Search bar resilience (WhatsApp Web, Google, general apps)
     if (/search|search-bar|find|query|contact/i.test(sel)) {
@@ -284,7 +290,9 @@ export class BrowserService {
         try {
           const loc = page.locator(candidate);
           if ((await loc.count()) > 0) return loc.first();
-        } catch {}
+        } catch {
+          // Ignore selector lookup failures and try the next candidate.
+        }
       }
     }
 
@@ -302,7 +310,9 @@ export class BrowserService {
         try {
           const loc = page.locator(candidate);
           if ((await loc.count()) > 0) return loc.first();
-        } catch {}
+        } catch {
+          // Ignore selector lookup failures and continue trying other candidates.
+        }
       }
     }
 
@@ -310,22 +320,30 @@ export class BrowserService {
     try {
       const titleMatch = page.locator(`span[title*="${sel}" i]`);
       if ((await titleMatch.count()) > 0) return titleMatch.first();
-    } catch {}
+    } catch {
+      // Ignore selector lookup failures and continue with fallback matches.
+    }
 
     try {
       const textMatch = page.locator(`text="${sel}"`);
       if ((await textMatch.count()) > 0) return textMatch.first();
-    } catch {}
+    } catch {
+      // Ignore selector lookup failures and continue with fallback matches.
+    }
 
     try {
       const roleBtn = page.getByRole('button', { name: sel });
       if ((await roleBtn.count()) > 0) return roleBtn.first();
-    } catch {}
+    } catch {
+      // Ignore selector lookup failures and continue with fallback matches.
+    }
 
     try {
       const byText = page.getByText(sel, { exact: false });
       if ((await byText.count()) > 0) return byText.first();
-    } catch {}
+    } catch {
+      // Ignore selector lookup failures and continue with fallback matches.
+    }
 
     return null;
   }
@@ -339,12 +357,26 @@ export class BrowserService {
     state.status = 'INTERACTING';
     const loc = await this.resolveLocator(page, selector);
     if (loc) {
-      await loc.scrollIntoViewIfNeeded().catch(() => {});
-      await loc.click({ timeout: 5000 });
+      await loc.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
+      await loc.click({ timeout: 2500 });
     } else {
-      await page.click(selector, { timeout: 10000 });
+      try {
+        await page.click(selector, { timeout: 2500 });
+      } catch (clickErr: any) {
+        const fuzzy = page
+          .locator(`button:has-text("${selector}"), a:has-text("${selector}"), [aria-label*="${selector}" i], text="${selector}"`)
+          .first();
+        if ((await fuzzy.count()) > 0) {
+          await fuzzy.click({ timeout: 2000 });
+        } else {
+          throw new Error(
+            `Element "${selector}" not found on page within fast timeout. Extract page state with browser_extract to locate exact elements.`,
+            { cause: clickErr },
+          );
+        }
+      }
     }
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(50);
 
     state.url = page.url();
     state.title = await page.title();
@@ -388,37 +420,39 @@ export class BrowserService {
 
     if (loc) {
       try {
-        await loc.click({ timeout: 3000 });
+        await loc.click({ timeout: 1500 }).catch(() => {});
         const isContentEditable = await loc
           .evaluate((el) => el.getAttribute('contenteditable') === 'true')
           .catch(() => false);
         if (isContentEditable) {
-          await page.keyboard.type(text, { delay: 30 });
+          await page.keyboard.type(text, { delay: 5 });
           filled = true;
         } else {
-          await loc.fill(text, { timeout: 3000 });
+          await loc.fill(text, { timeout: 2000 });
           filled = true;
         }
       } catch {
         try {
-          await loc.click({ timeout: 2000 });
-          await page.keyboard.type(text, { delay: 30 });
+          await loc.click({ timeout: 1000 }).catch(() => {});
+          await page.keyboard.type(text, { delay: 5 });
           filled = true;
-        } catch {}
+        } catch {
+          // Ignore fallback typing errors.
+        }
       }
     }
 
     if (!filled) {
       try {
-        await page.fill(selector, text, { timeout: 5000 });
+        await page.fill(selector, text, { timeout: 2000 });
       } catch {
-        await page.click(selector, { timeout: 3000 }).catch(() => {});
-        await page.keyboard.type(text, { delay: 30 });
+        await page.click(selector, { timeout: 1500 }).catch(() => {});
+        await page.keyboard.type(text, { delay: 5 });
       }
     }
 
     if (pressEnter) {
-      await page.waitForTimeout(100);
+      await page.waitForTimeout(50);
       await page.keyboard.press('Enter');
     }
 
@@ -514,6 +548,7 @@ export class BrowserService {
             else if (placeholder) selector += `[placeholder="${placeholder}"]`;
             else if (el.id) selector = `#${el.id}`;
             else if (el.getAttribute('data-tab')) selector += `[data-tab="${el.getAttribute('data-tab')}"]`;
+            else if (textContent && (tag === 'button' || tag === 'a' || role === 'button')) selector = `${tag}:has-text("${textContent.replace(/"/g, '\\"')}")`;
 
             return {
               tag,

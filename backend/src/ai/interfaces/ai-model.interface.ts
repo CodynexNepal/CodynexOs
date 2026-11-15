@@ -22,18 +22,47 @@ export interface AiModelInfo {
 }
 
 export interface AiProviderConfig {
+  id?: string;
   provider: AiProviderName;
+  name?: string;
   displayName: string;
   isPaid: boolean;
   isConfigured: boolean;
+  status?: 'CONNECTED' | 'DISCONNECTED' | 'DEGRADED' | 'RATE_LIMITED';
+  isFreeEligible?: boolean;
   isEnabled: boolean;
   isLocal: boolean;
   priority: number;
+  modelCount?: number;
+  activeModel?: string;
   defaultModel: string;
+  baseUrl?: string;
+  endpoint?: string;
+  description?: string;
   freeTierNotes: string;
+  quotaDescription?: string;
   dailyQuotaLimit?: number;
   quotaInfoUnavailable?: boolean;
-  endpoint?: string;
+}
+
+export interface ProviderQuotaInfo {
+  provider: AiProviderName;
+  displayName?: string;
+  isLocal?: boolean;
+  isPaid?: boolean;
+  freeTierAllowance?: string;
+  requestsUsedToday?: number;
+  dailyRequestsUsed: number;
+  tokensUsedToday?: number;
+  dailyTokensUsed: number;
+  dailyLimitTokens: number | null;
+  dailyLimitRequests: number | null;
+  remainingAllowance?: string;
+  quotaUnavailableReason?: string;
+  quotaKnown: boolean;
+  quotaStatus: 'OK' | 'WARNING' | 'EXHAUSTED' | 'UNKNOWN' | 'UNAVAILABLE';
+  resetTime?: string;
+  detail: string;
 }
 
 export interface AiGlobalSettings {
@@ -57,14 +86,4 @@ export interface AgentModelPreference {
   notes?: string;
 }
 
-export interface ProviderQuotaInfo {
-  provider: AiProviderName;
-  dailyRequestsUsed: number;
-  dailyTokensUsed: number;
-  dailyLimitTokens: number | null;
-  dailyLimitRequests: number | null;
-  quotaKnown: boolean;
-  quotaStatus: 'OK' | 'WARNING' | 'EXHAUSTED' | 'UNAVAILABLE';
-  resetTime?: string;
-  detail: string;
-}
+

@@ -2,10 +2,13 @@ import rateLimit from 'express-rate-limit';
 
 export const globalRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 600,
+  max: 3000,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.method === 'OPTIONS' || req.path === '/health',
+  skip: (req) =>
+    req.method === 'OPTIONS' ||
+    req.path === '/health' ||
+    req.path.startsWith('/socket.io'),
   message: { success: false, message: 'Too many requests. Please slow down.' },
 });
 

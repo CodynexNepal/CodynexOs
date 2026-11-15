@@ -12,6 +12,7 @@ import { OpenAiAdapter } from '../adapters/openai.adapter';
 import { OpenRouterAdapter } from '../adapters/openrouter.adapter';
 import { CloudflareAdapter } from '../adapters/cloudflare.adapter';
 import { HuggingFaceAdapter } from '../adapters/huggingface.adapter';
+import { OpenCodeAdapter } from '../adapters/opencode.adapter';
 import { VERIFIED_FREE_MODELS } from '../config/free-models.config';
 import { AiModelInfo, AiProviderConfig } from '../interfaces/ai-model.interface';
 
@@ -25,6 +26,7 @@ export class ProviderManagerService {
     this.adapters.set(AiProviderName.OPENROUTER, new OpenRouterAdapter());
     this.adapters.set(AiProviderName.CLOUDFLARE, new CloudflareAdapter());
     this.adapters.set(AiProviderName.HUGGINGFACE, new HuggingFaceAdapter());
+    this.adapters.set(AiProviderName.OPENCODE, new OpenCodeAdapter());
     this.adapters.set(AiProviderName.OPENAI, new OpenAiAdapter());
   }
 
@@ -47,6 +49,7 @@ export class ProviderManagerService {
       cfAccount,
       cfToken,
       hfKey,
+      opencodeKey,
       openaiKey,
     ] = await Promise.all([
       resolveRuntimeSecret('gemini_api_key'),
@@ -55,6 +58,7 @@ export class ProviderManagerService {
       resolveRuntimeSecret('cloudflare_account_id'),
       resolveRuntimeSecret('cloudflare_api_token'),
       resolveRuntimeSecret('huggingface_api_key'),
+      resolveRuntimeSecret('opencode_api_key'),
       resolveRuntimeSecret('openai_api_key'),
     ]);
 
@@ -65,89 +69,189 @@ export class ProviderManagerService {
 
     return [
       {
+        id: AiProviderName.OLLAMA,
         provider: AiProviderName.OLLAMA,
+        name: 'Ollama (Local Inference)',
         displayName: 'Ollama (Local Inference)',
         isPaid: false,
         isConfigured: dotEnvConfig.OLLAMA_ENABLED && Boolean(dotEnvConfig.OLLAMA_BASE_URL),
+        status:
+          dotEnvConfig.OLLAMA_ENABLED && Boolean(dotEnvConfig.OLLAMA_BASE_URL)
+            ? 'CONNECTED'
+            : 'DISCONNECTED',
+        isFreeEligible: true,
         isEnabled: dotEnvConfig.OLLAMA_ENABLED,
         isLocal: true,
         priority: 1,
+        modelCount: 3,
+        activeModel: dotEnvConfig.OLLAMA_MODEL || 'qwen3:4b',
         defaultModel: dotEnvConfig.OLLAMA_MODEL || 'qwen3:4b',
-        freeTierNotes: '100% Free & offline execution directly on your local device.',
-        quotaInfoUnavailable: false,
+        baseUrl: dotEnvConfig.OLLAMA_BASE_URL,
         endpoint: dotEnvConfig.OLLAMA_BASE_URL,
+        description: '100% Free & offline execution directly on your local device.',
+        freeTierNotes: '100% Free & offline execution directly on your local device.',
+        quotaDescription: 'Unlimited offline local hardware execution',
+        quotaInfoUnavailable: false,
       },
       {
+        id: AiProviderName.GEMINI,
         provider: AiProviderName.GEMINI,
+        name: 'Google Gemini',
         displayName: 'Google Gemini',
         isPaid: false,
         isConfigured: Boolean(geminiKey || dotEnvConfig.GEMINI_API_KEY),
+        status: Boolean(geminiKey || dotEnvConfig.GEMINI_API_KEY) ? 'CONNECTED' : 'DISCONNECTED',
+        isFreeEligible: true,
         isEnabled: true,
         isLocal: false,
         priority: 2,
+        modelCount: 5,
+        activeModel: dotEnvConfig.GEMINI_MODEL || 'gemini-3.8-flash',
         defaultModel: dotEnvConfig.GEMINI_MODEL || 'gemini-3.8-flash',
+        description: 'Free API tier via Google AI Studio (15 RPM / 1M TPM / 1500 RPD).',
         freeTierNotes: 'Free API tier via Google AI Studio (15 RPM / 1M TPM / 1500 RPD).',
+        quotaDescription: '15 RPM / 1M TPM / 1,500 RPD',
         quotaInfoUnavailable: true,
       },
       {
+        id: AiProviderName.GROQ,
         provider: AiProviderName.GROQ,
+        name: 'Groq LPUs',
         displayName: 'Groq LPUs',
         isPaid: false,
         isConfigured: Boolean(groqKey || dotEnvConfig.GROQ_API_KEY),
+        status: Boolean(groqKey || dotEnvConfig.GROQ_API_KEY) ? 'CONNECTED' : 'DISCONNECTED',
+        isFreeEligible: true,
         isEnabled: true,
         isLocal: false,
         priority: 3,
+        modelCount: 6,
+        activeModel: dotEnvConfig.GROQ_MODEL || 'llama-3.3-70b-versatile',
         defaultModel: dotEnvConfig.GROQ_MODEL || 'llama-3.3-70b-versatile',
-        freeTierNotes: 'Free developer tier: 30 RPM, 6K TPM on custom LPU silicon.',
+        description: 'Free developer tier: 30 RPM, 6K TPM on custom ultra-fast LPU silicon.',
+        freeTierNotes: 'Free developer tier: 30 RPM, 6K TPM on custom ultra-fast LPU silicon.',
+        quotaDescription: '30 RPM / 6K TPM',
         quotaInfoUnavailable: true,
       },
       {
+        id: AiProviderName.OPENROUTER,
         provider: AiProviderName.OPENROUTER,
+        name: 'OpenRouter (Free Hub)',
         displayName: 'OpenRouter (Free Hub)',
         isPaid: false,
         isConfigured: Boolean(openrouterKey || dotEnvConfig.OPENROUTER_API_KEY),
+        status: Boolean(openrouterKey || dotEnvConfig.OPENROUTER_API_KEY)
+          ? 'CONNECTED'
+          : 'DISCONNECTED',
+        isFreeEligible: true,
         isEnabled: true,
         isLocal: false,
         priority: 4,
-        defaultModel: dotEnvConfig.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free',
+        modelCount: 18,
+        activeModel:
+          dotEnvConfig.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free',
+        defaultModel:
+          dotEnvConfig.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free',
+        description: 'Community-supported $0 verified models with 20 RPM free allowance.',
         freeTierNotes: 'Community-supported $0 verified models with 20 RPM free allowance.',
+        quotaDescription: '20 RPM (18+ Verified $0 Models)',
         quotaInfoUnavailable: true,
       },
       {
+        id: AiProviderName.CLOUDFLARE,
         provider: AiProviderName.CLOUDFLARE,
+        name: 'Cloudflare Workers AI',
         displayName: 'Cloudflare Workers AI',
         isPaid: false,
         isConfigured: isCfConfigured,
+        status: isCfConfigured ? 'CONNECTED' : 'DISCONNECTED',
+        isFreeEligible: true,
         isEnabled: true,
         isLocal: false,
         priority: 5,
-        defaultModel: dotEnvConfig.CLOUDFLARE_MODEL || '@cf/meta/llama-3.1-8b-instruct',
-        freeTierNotes: '10,000 free Neurons/day edge inference globally across Cloudflare network.',
+        modelCount: 4,
+        activeModel:
+          dotEnvConfig.CLOUDFLARE_MODEL || '@cf/meta/llama-3.1-8b-instruct',
+        defaultModel:
+          dotEnvConfig.CLOUDFLARE_MODEL || '@cf/meta/llama-3.1-8b-instruct',
+        description:
+          '10,000 free Neurons/day edge inference globally across Cloudflare network.',
+        freeTierNotes:
+          '10,000 free Neurons/day edge inference globally across Cloudflare network.',
+        quotaDescription: '10,000 Free Neurons / Day',
         quotaInfoUnavailable: false,
         dailyQuotaLimit: 10000,
       },
       {
+        id: AiProviderName.HUGGINGFACE,
         provider: AiProviderName.HUGGINGFACE,
+        name: 'Hugging Face Serverless',
         displayName: 'Hugging Face Serverless',
         isPaid: false,
         isConfigured: Boolean(hfKey || dotEnvConfig.HUGGINGFACE_API_KEY),
+        status: Boolean(hfKey || dotEnvConfig.HUGGINGFACE_API_KEY)
+          ? 'CONNECTED'
+          : 'DISCONNECTED',
+        isFreeEligible: true,
         isEnabled: true,
         isLocal: false,
         priority: 6,
-        defaultModel: dotEnvConfig.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.2-3B-Instruct',
+        modelCount: 3,
+        activeModel:
+          dotEnvConfig.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.2-3B-Instruct',
+        defaultModel:
+          dotEnvConfig.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.2-3B-Instruct',
+        description: 'Free serverless community inference with warm-up fallback.',
         freeTierNotes: 'Free serverless community inference with warm-up fallback.',
+        quotaDescription: 'Free Community Inference',
         quotaInfoUnavailable: true,
       },
       {
+        id: AiProviderName.OPENCODE,
+        provider: AiProviderName.OPENCODE,
+        name: 'OpenCode API (AI Coding Engine)',
+        displayName: 'OpenCode API (AI Coding Engine)',
+        isPaid: false,
+        isConfigured: Boolean(opencodeKey || dotEnvConfig.OPENCODE_API_KEY),
+        status: Boolean(opencodeKey || dotEnvConfig.OPENCODE_API_KEY)
+          ? 'CONNECTED'
+          : 'DISCONNECTED',
+        isFreeEligible: true,
+        isEnabled: true,
+        isLocal: false,
+        priority: 7,
+        modelCount: 4,
+        activeModel: dotEnvConfig.OPENCODE_MODEL || 'deepseek-v4.1-flash-free',
+        defaultModel: dotEnvConfig.OPENCODE_MODEL || 'deepseek-v4.1-flash-free',
+        baseUrl: dotEnvConfig.OPENCODE_BASE_URL || 'https://opencode.ai/zen/v1',
+        endpoint: dotEnvConfig.OPENCODE_BASE_URL || 'https://opencode.ai/zen/v1',
+        description: 'Open-weight code generation and autonomous software engineering API (Zen Gateway).',
+        freeTierNotes: 'Verified $0 Free models: deepseek-v4.1-flash-free, flint-40b-free, glm-5.3-flash-free, mimo-v2.6-flash-free.',
+        quotaDescription: '$0 Verified Free Models Available',
+        quotaInfoUnavailable: true,
+      },
+      {
+        id: AiProviderName.OPENAI,
         provider: AiProviderName.OPENAI,
+        name: 'OpenAI (Paid Provider)',
         displayName: 'OpenAI (Paid Provider)',
         isPaid: true,
         isConfigured: Boolean(openaiKey || dotEnvConfig.OPENAI_API_KEY),
+        status: Boolean(openaiKey || dotEnvConfig.OPENAI_API_KEY)
+          ? 'CONNECTED'
+          : 'DISCONNECTED',
+        isFreeEligible: false,
         isEnabled: false,
         isLocal: false,
         priority: 7,
+        modelCount: 4,
+        activeModel: dotEnvConfig.OPENAI_MODEL || 'gpt-4o-mini',
         defaultModel: dotEnvConfig.OPENAI_MODEL || 'gpt-4o-mini',
-        freeTierNotes: 'Commercial paid provider ($0.15 - $10/M tokens). BLOCKED in FREE-ONLY mode.',
+        description:
+          'Commercial paid provider ($0.15 - $10/M tokens). BLOCKED in FREE-ONLY mode.',
+        freeTierNotes:
+          'Commercial paid provider ($0.15 - $10/M tokens). BLOCKED in FREE-ONLY mode.',
+        quotaDescription: 'Pay-as-you-go ($/token)',
         quotaInfoUnavailable: true,
       },
     ];
@@ -289,6 +393,76 @@ export class ProviderManagerService {
         return { ok: false, latencyMs, message: `Hugging Face error HTTP ${res.status}`, activeModels: [] };
       }
 
+      if (provider === AiProviderName.OPENCODE) {
+        const key =
+          testCredentials?.apiKey ||
+          (await resolveRuntimeSecret('opencode_api_key')) ||
+          dotEnvConfig.OPENCODE_API_KEY;
+        let rawUrl =
+          testCredentials?.baseUrl ||
+          (await resolveRuntimeSecret('opencode_base_url')) ||
+          dotEnvConfig.OPENCODE_BASE_URL ||
+          'https://opencode.ai/zen/v1';
+
+        // Auto-fix stale 404 endpoint api.opencode.ai -> opencode.ai/zen/v1
+        if (/api\.opencode\.ai/i.test(rawUrl)) {
+          rawUrl = rawUrl
+            .replace(/api\.opencode\.ai\/v1/i, 'opencode.ai/zen/v1')
+            .replace(/api\.opencode\.ai/i, 'opencode.ai/zen/v1');
+        }
+        const url = rawUrl.replace(/\/+$/, '');
+
+        let res: Response;
+        try {
+          res = await fetch(`${url}/models`, {
+            headers: {
+              ...(key ? { Authorization: `Bearer ${key}` } : {}),
+            },
+          });
+        } catch (err: any) {
+          const latencyMs = Date.now() - started;
+          return {
+            ok: false,
+            latencyMs,
+            message: `OpenCode connection failed: ${err?.message || 'Endpoint unreachable'}`,
+            activeModels: [],
+          };
+        }
+
+        const latencyMs = Date.now() - started;
+        if (res.ok) {
+          const body = (await res.json().catch(() => ({}))) as {
+            data?: Array<{ id?: string; name?: string }>;
+          };
+          const rawModels = Array.isArray(body?.data) ? body.data : [];
+          const freeModels = rawModels
+            .filter((m) => m.id && (m.id.includes('-free') || m.id.includes('free')))
+            .map((m) => m.id as string);
+
+          const models =
+            freeModels.length > 0
+              ? freeModels
+              : rawModels.slice(0, 6).map((m) => (m.id || '') as string);
+
+          return {
+            ok: true,
+            latencyMs,
+            message: `Connected to OpenCode Zen API successfully (${models.length} $0 Free model(s) verified: ${models.slice(0, 3).join(', ')}).`,
+            activeModels:
+              models.length > 0
+                ? models
+                : ['deepseek-v4.1-flash-free', 'flint-40b-free', 'glm-5.3-flash-free'],
+          };
+        }
+
+        return {
+          ok: false,
+          latencyMs,
+          message: `OpenCode returned HTTP ${res.status}: ${res.statusText}`,
+          activeModels: [],
+        };
+      }
+
       if (provider === AiProviderName.OPENAI) {
         const key = testCredentials?.apiKey || (await resolveRuntimeSecret('openai_api_key')) || dotEnvConfig.OPENAI_API_KEY;
         if (!key) return { ok: false, latencyMs: 0, message: 'OpenAI API Key is not configured.', activeModels: [] };
@@ -370,6 +544,12 @@ export class ProviderManagerService {
       if (discovered.length > 0) return discovered;
     }
 
+    if (provider === AiProviderName.OPENCODE) {
+      const adapter = this.adapters.get(AiProviderName.OPENCODE) as OpenCodeAdapter;
+      const discovered = await adapter.discoverFreeModels();
+      if (discovered.length > 0) return discovered;
+    }
+
     return curated;
   }
 
@@ -400,7 +580,13 @@ export class ProviderManagerService {
    */
   public async saveProviderCredentials(
     provider: AiProviderName,
-    credentials: { apiKey?: string; accountId?: string; apiToken?: string; baseUrl?: string },
+    credentials: {
+      apiKey?: string;
+      accountId?: string;
+      apiToken?: string;
+      baseUrl?: string;
+      model?: string;
+    },
   ): Promise<boolean> {
     if (!AppDataSource.isInitialized) return false;
 
@@ -419,6 +605,17 @@ export class ProviderManagerService {
     }
 
     if (provider === AiProviderName.CLOUDFLARE) {
+      const cfToken = credentials.apiToken || credentials.apiKey;
+      if (cfToken) {
+        const encrypted = encryptSecret(cfToken.trim());
+        await repo.save(
+          repo.create({
+            key: 'cloudflare_api_token',
+            isSecret: true,
+            value: { encrypted },
+          }),
+        );
+      }
       if (credentials.accountId) {
         await repo.save(
           repo.create({
@@ -428,16 +625,27 @@ export class ProviderManagerService {
           }),
         );
       }
-      if (credentials.apiToken) {
-        const encrypted = encryptSecret(credentials.apiToken.trim());
-        await repo.save(
-          repo.create({
-            key: 'cloudflare_api_token',
-            isSecret: true,
-            value: { encrypted },
-          }),
-        );
-      }
+    }
+
+    if (credentials.baseUrl) {
+      const urlKey = provider === AiProviderName.OLLAMA ? 'ollama_base_url' : `${provider}_base_url`;
+      await repo.save(
+        repo.create({
+          key: urlKey,
+          isSecret: false,
+          value: { value: credentials.baseUrl.trim() },
+        }),
+      );
+    }
+
+    if (credentials.model) {
+      await repo.save(
+        repo.create({
+          key: `${provider}_model`,
+          isSecret: false,
+          value: { value: credentials.model.trim() },
+        }),
+      );
     }
 
     return true;

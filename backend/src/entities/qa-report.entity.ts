@@ -6,8 +6,8 @@ export class QaReportEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ name: 'task_id', type: 'uuid' })
-  taskId!: string;
+  @Column({ name: 'task_id', type: 'uuid', nullable: true })
+  taskId!: string | null;
 
   @Column({ name: 'reviewer_employee_id', type: 'uuid', nullable: true })
   reviewerEmployeeId!: string | null;

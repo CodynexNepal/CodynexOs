@@ -51,6 +51,7 @@ export enum AiProviderName {
   OPENROUTER = 'openrouter',
   CLOUDFLARE = 'cloudflare',
   HUGGINGFACE = 'huggingface',
+  OPENCODE = 'opencode',
 }
 
 export enum ModelEligibilityStatus {

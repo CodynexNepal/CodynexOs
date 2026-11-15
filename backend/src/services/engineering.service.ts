@@ -677,11 +677,18 @@ export class EngineeringService {
   async readWorkspaceFile(repoId: string, filePath: string) {
     const repo = await this.engRepo.findRepoById(repoId);
     if (!repo) throw ApiError.notFound('Repository not found.');
-    const content = await this.workspaceService.readFile(repo.owner, repo.name, filePath);
-    const originalContent = await this.workspaceService.readOriginalFile(repo.owner, repo.name, filePath);
-    const isNew = originalContent === null;
-    const status = isNew ? 'A' : (content !== originalContent ? 'M' : 'U');
-    return { path: filePath, content, originalContent: originalContent ?? '', isNew, status };
+    try {
+      const content = await this.workspaceService.readFile(repo.owner, repo.name, filePath);
+      const originalContent = await this.workspaceService.readOriginalFile(repo.owner, repo.name, filePath);
+      const isNew = originalContent === null;
+      const status = isNew ? 'A' : (content !== originalContent ? 'M' : 'U');
+      return { path: filePath, content, originalContent: originalContent ?? '', isNew, status };
+    } catch (err: any) {
+      if (err.code === 'ENOENT' || err.message?.includes('ENOENT')) {
+        return { path: filePath, content: '', originalContent: '', isNew: false, status: 'U' };
+      }
+      throw err;
+    }
   }
 
   async writeWorkspaceFiles(

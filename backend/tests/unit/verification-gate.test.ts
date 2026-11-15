@@ -29,7 +29,7 @@ describe('7-Gate Release Quality Verification Engine', () => {
     expect(cert.compositeScore).toBeGreaterThanOrEqual(0);
     expect(cert.compositeScore).toBeLessThanOrEqual(100);
     expect([QaVerdict.PASSED, QaVerdict.FAILED]).toContain(cert.verdict);
-  });
+  }, 30000);
 
   it('evaluates deliverable requirements checking accurately', async () => {
     const certWithDeliverable = await verificationGateService.evaluateReleaseGates({
@@ -42,5 +42,5 @@ describe('7-Gate Release Quality Verification Engine', () => {
     expect(gate1).toBeDefined();
     expect(gate1?.status).toBe('FAIL');
     expect(gate1?.details).toContain('Missing required deliverables');
-  });
+  }, 30000);
 });

@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -71,98 +71,47 @@ export function DeliveryScorecard({
   className,
 }: DeliveryScorecardProps) {
   const [isRunning, setIsRunning] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"ALL" | "PASS" | "FAIL" | "WARNING">("ALL");
   const [expandedGates, setExpandedGates] = useState<Record<number, boolean>>({});
   const [activeScreenshot, setActiveScreenshot] = useState<string | null>(null);
 
-  // Default baseline certificate
+  // Real-time certificate state
   const [certificate, setCertificate] = useState<ReleaseCertificate>({
-    certificateId: "CERT-INIT-READY",
+    certificateId: "CERT-EVALUATING",
     repoOwner: owner,
     repoName: repoName,
     taskId,
     evaluatedAt: new Date().toISOString(),
     verdict: "PASSED",
-    compositeScore: 94,
-    gatesPassed: 6,
+    compositeScore: 0,
+    gatesPassed: 0,
     totalGates: 7,
-    gates: [
-      {
-        gateNumber: 1,
-        gateKey: "requirements",
-        gateName: "Requirements Satisfaction",
-        status: "PASS",
-        score: 100,
-        details: "Deliverables, user stories, and acceptance criteria matched on disk.",
-        durationMs: 42,
-        timestamp: new Date().toISOString(),
-      },
-      {
-        gateNumber: 2,
-        gateKey: "static_analysis",
-        gateName: "Static Analysis & Typecheck",
-        status: "PASS",
-        score: 100,
-        details: "TypeScript compilation (tsc) & linting clean with 0 syntax or type errors.",
-        durationMs: 480,
-        timestamp: new Date().toISOString(),
-        artifacts: { terminalOutput: "tsc -p tsconfig.json -> 0 diagnostics emitted." },
-      },
-      {
-        gateNumber: 3,
-        gateKey: "automated_tests",
-        gateName: "Automated Test Execution",
-        status: "PASS",
-        score: 100,
-        details: "All automated test suites verified. Zero regression defects.",
-        durationMs: 910,
-        timestamp: new Date().toISOString(),
-        artifacts: { terminalOutput: "Vitest: 15 suites passed (100% pass rate)." },
-      },
-      {
-        gateNumber: 4,
-        gateKey: "browser_validation",
-        gateName: "Real Browser Playwright Validation",
-        status: "PASS",
-        score: 95,
-        details: "Viewport loaded over Playwright headless Chrome with 0 uncaught exceptions.",
-        durationMs: 380,
-        timestamp: new Date().toISOString(),
-      },
-      {
-        gateNumber: 5,
-        gateKey: "security_hygiene",
-        gateName: "Security & Secret Hygiene Audit",
-        status: "PASS",
-        score: 100,
-        details: "Zero leaked credentials, private keys, or malicious shell tokens detected.",
-        durationMs: 35,
-        timestamp: new Date().toISOString(),
-      },
-      {
-        gateNumber: 6,
-        gateKey: "git_diff_review",
-        gateName: "Independent Git Diff Scope Review",
-        status: "PASS",
-        score: 90,
-        details: "Git changes tightly isolated to feature files. No build cache contamination.",
-        durationMs: 65,
-        timestamp: new Date().toISOString(),
-      },
-      {
-        gateNumber: 7,
-        gateKey: "final_signoff",
-        gateName: "Final Acceptance Sign-off",
-        status: "PASS",
-        score: 94,
-        details: "Release Readiness Certificate APPROVED. Release score meets threshold (>=80%).",
-        durationMs: 15,
-        timestamp: new Date().toISOString(),
-      },
-    ],
-    summary:
-      "Release Readiness Certificate APPROVED. Composite Quality Score: 94% across 7 independent gates.",
+    gates: [],
+    summary: "Initializing real-time 7-Gate verification...",
   });
+
+  const fetchLiveCertificate = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await codynexApi.qa.latestReleaseCertificate({
+        owner,
+        name: repoName,
+        taskId,
+      });
+      if (res.data?.data) {
+        setCertificate(res.data.data as unknown as ReleaseCertificate);
+      }
+    } catch (err) {
+      console.warn("Could not load latest QA certificate on mount:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [owner, repoName, taskId]);
+
+  useEffect(() => {
+    void fetchLiveCertificate();
+  }, [fetchLiveCertificate]);
 
   // Real-time socket events
   useDomainSocket((eventName, payload) => {

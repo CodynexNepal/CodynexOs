@@ -34,6 +34,9 @@ export interface CleanEnvConfig {
   CLOUDFLARE_MODEL: string;
   HUGGINGFACE_API_KEY: string;
   HUGGINGFACE_MODEL: string;
+  OPENCODE_API_KEY: string;
+  OPENCODE_BASE_URL: string;
+  OPENCODE_MODEL: string;
   GITHUB_TOKEN: string;
   GITHUB_DEFAULT_OWNER: string;
   WHATSAPP_ACCESS_TOKEN: string;
@@ -165,6 +168,9 @@ export function cleanEnvConfig(): CleanEnvConfig {
     CLOUDFLARE_MODEL: (process.env.CLOUDFLARE_MODEL || '@cf/meta/llama-3.1-8b-instruct').trim(),
     HUGGINGFACE_API_KEY: (process.env.HUGGINGFACE_API_KEY || process.env.HUGGING_FACE_API_KEY || '').trim(),
     HUGGINGFACE_MODEL: (process.env.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.2-3B-Instruct').trim(),
+    OPENCODE_API_KEY: (process.env.OPENCODE_API_KEY || process.env.OPEN_CODE_API_KEY || '').trim(),
+    OPENCODE_BASE_URL: (process.env.OPENCODE_BASE_URL || process.env.OPEN_CODE_BASE_URL || 'https://opencode.ai/zen/v1').trim(),
+    OPENCODE_MODEL: (process.env.OPENCODE_MODEL || process.env.OPEN_CODE_MODEL || 'deepseek-v4.1-flash-free').trim(),
     GITHUB_TOKEN: (process.env.GITHUB_TOKEN || '').trim(),
     GITHUB_DEFAULT_OWNER: (process.env.GITHUB_DEFAULT_OWNER || '').trim(),
     WHATSAPP_ACCESS_TOKEN: (process.env.WHATSAPP_ACCESS_TOKEN || '').trim(),
