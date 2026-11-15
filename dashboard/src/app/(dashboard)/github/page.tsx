@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import {
   AlertTriangle,
   CheckCircle2,
+  CornerDownLeft,
+  Cpu,
   Download,
   FileCode2,
   Folder,
@@ -14,13 +17,17 @@ import {
   GitCommit,
   GitPullRequest,
   Key,
+  Package,
   Play,
   Plus,
   RefreshCw,
   Save,
   ShieldAlert,
+  Terminal,
+  Trash2,
   UploadCloud,
   XCircle,
+  Zap,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -33,7 +40,8 @@ import { useApiQuery } from "@/hooks/useApi";
 import { codynexApi, unwrap } from "@/lib/codynexOs";
 import { repoSchema } from "@/schemas/forms.schema";
 import { toApiError } from "@/lib/axios";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
+import { LiveCodexFileEditor } from "@/components/domain/LiveCodexFileEditor";
 
 interface RepoItem {
   id: string;
@@ -46,8 +54,14 @@ interface RepoItem {
 
 interface WorkspaceState {
   cloned: boolean;
-  entries: Array<{ name: string; path: string; type: "file" | "dir"; size?: number }>;
-  gitState: { branch: string; status: string; diff: string };
+  entries: Array<{ name: string; path: string; type: "file" | "dir"; size?: number; gitStatus?: string }>;
+  gitState: {
+    branch: string;
+    status: string;
+    diff: string;
+    fileStatuses?: Array<{ path: string; code: string }>;
+    counts?: { added: number; modified: number; untracked: number; deleted: number; total: number };
+  };
 }
 
 interface RepositoryDiagnostic {
@@ -113,10 +127,58 @@ export default function GithubPage() {
     checks: Array<{ name: string; status: string; output: string }>;
   } | null>(null);
 
+  const [editorTab, setEditorTab] = useState<"CODEX" | "MANUAL">("CODEX");
+
+  const renderGitStatusBadge = (code?: string) => {
+    if (!code) return null;
+    const tone =
+      code === "A"
+        ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+        : code === "M"
+        ? "bg-amber-500/20 text-amber-400 border-amber-500/40"
+        : code === "U" || code === "?"
+        ? "bg-sky-500/20 text-sky-400 border-sky-500/40"
+        : code === "D"
+        ? "bg-rose-500/20 text-rose-400 border-rose-500/40"
+        : "bg-purple-500/20 text-purple-400 border-purple-500/40";
+    return (
+      <span
+        title={`Git status: ${code}`}
+        className={`inline-flex items-center justify-center rounded px-1.5 py-0.5 font-mono text-[10px] font-bold border ${tone}`}
+      >
+        {code}
+      </span>
+    );
+  };
+
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [probeResult, setProbeResult] = useState<GithubDiagnosticState | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+
+  // Interactive Git Terminal state
+  const [terminalInput, setTerminalInput] = useState("");
+  const [terminalLogs, setTerminalLogs] = useState<
+    Array<{
+      command: string;
+      stdout: string;
+      stderr: string;
+      exitCode: number;
+      timestamp: string;
+    }>
+  >([
+    {
+      command: "git status",
+      stdout: "Interactive Git Terminal ready. Type any git command (e.g. status, add -A, commit, diff, log, branch).",
+      stderr: "",
+      exitCode: 0,
+      timestamp: new Date().toLocaleTimeString(),
+    },
+  ]);
+  const [cmdHistory, setCmdHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [terminalRunning, setTerminalRunning] = useState(false);
+  const terminalBottomRef = useRef<HTMLDivElement | null>(null);
 
   const {
     register,
@@ -364,6 +426,26 @@ export default function GithubPage() {
     }
   };
 
+  const handleInstallDeps = async () => {
+    if (!activeRepo) return;
+    setBusyAction("install-deps");
+    setActionErr(null);
+    try {
+      const res = await codynexApi.github.workspaceInstallDeps(activeRepo.id);
+      const out = unwrap<{ success: boolean; output: string }>(res.data);
+      if (out.success) {
+        setActionMsg("Dependencies installed successfully in workspace (node_modules ready).");
+      } else {
+        setActionErr(`Dependency installation failed: ${out.output}`);
+      }
+      await loadWorkspace(activeRepo, currentPath);
+    } catch (err) {
+      setActionErr(toApiError(err).message);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const handleRunChecks = async () => {
     if (!activeRepo) return;
     setBusyAction("checks");
@@ -397,6 +479,86 @@ export default function GithubPage() {
       setActionErr(toApiError(err).message);
     } finally {
       setBusyAction(null);
+    }
+  };
+
+  const handleRunTerminalCommand = async (cmdToRun?: string) => {
+    const rawCmd = (cmdToRun !== undefined ? cmdToRun : terminalInput).trim();
+    if (!rawCmd || !activeRepo) return;
+    setTerminalRunning(true);
+    setTerminalInput("");
+    setCmdHistory((prev) => [rawCmd, ...prev.filter((c) => c !== rawCmd)]);
+    setHistoryIndex(-1);
+
+    try {
+      const res = await codynexApi.github.workspaceTerminal(activeRepo.id, { command: rawCmd });
+      const data = unwrap<{ stdout: string; stderr: string; exitCode: number; branch: string }>(
+        res.data
+      );
+      setTerminalLogs((prev) => [
+        ...prev,
+        {
+          command: rawCmd,
+          stdout: data.stdout || "",
+          stderr: data.stderr || "",
+          exitCode: data.exitCode,
+          timestamp: new Date().toLocaleTimeString(),
+        },
+      ]);
+      if (data.branch) {
+        setBranchName(data.branch);
+      }
+      if (
+        rawCmd.includes("commit") ||
+        rawCmd.includes("add") ||
+        rawCmd.includes("checkout") ||
+        rawCmd.includes("switch") ||
+        rawCmd.includes("pull") ||
+        rawCmd.includes("push") ||
+        rawCmd.includes("reset")
+      ) {
+        loadWorkspace(activeRepo, currentPath);
+      }
+    } catch (err) {
+      setTerminalLogs((prev) => [
+        ...prev,
+        {
+          command: rawCmd,
+          stdout: "",
+          stderr: toApiError(err).message,
+          exitCode: 1,
+          timestamp: new Date().toLocaleTimeString(),
+        },
+      ]);
+    } finally {
+      setTerminalRunning(false);
+      setTimeout(() => {
+        terminalBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 50);
+    }
+  };
+
+  const handleTerminalKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !terminalRunning) {
+      e.preventDefault();
+      handleRunTerminalCommand();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (cmdHistory.length > 0) {
+        const nextIdx = Math.min(historyIndex + 1, cmdHistory.length - 1);
+        setHistoryIndex(nextIdx);
+        setTerminalInput(cmdHistory[nextIdx] ?? "");
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (historyIndex > 0) {
+        const nextIdx = historyIndex - 1;
+        setHistoryIndex(nextIdx);
+        setTerminalInput(cmdHistory[nextIdx] ?? "");
+      } else if (historyIndex === 0) {
+        setHistoryIndex(-1);
+        setTerminalInput("");
+      }
     }
   };
 
@@ -673,12 +835,28 @@ export default function GithubPage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={handleInstallDeps}
+                        loading={busyAction === "install-deps"}
+                      >
+                        <Package className="h-3.5 w-3.5" />
+                        Install Dependencies
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={handleRunChecks}
                         loading={busyAction === "checks"}
                       >
                         <Play className="h-3.5 w-3.5" />
                         Run Tests
                       </Button>
+                      <Link
+                        href="/workspace"
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-brand bg-brand/15 text-brand-ink px-3 text-[13px] font-bold hover:bg-brand/25 transition-colors"
+                      >
+                        <Cpu className="h-3.5 w-3.5" />
+                        Autonomous Workspace
+                      </Link>
                       <Button
                         variant="dark"
                         size="sm"
@@ -701,7 +879,8 @@ export default function GithubPage() {
                 push PRs.
               </div>
             ) : (
-              <div className="grid divide-y divide-surface-border lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+              <>
+                <div className="grid divide-y divide-surface-border lg:grid-cols-3 lg:divide-x lg:divide-y-0">
                 <div className="p-4">
                   <div className="mb-2 flex items-center justify-between text-xs font-bold text-ink">
                     <span>Project Folder</span>
@@ -737,23 +916,35 @@ export default function GithubPage() {
                             ? loadWorkspace(activeRepo, entry.path)
                             : handleOpenFile(entry.path)
                         }
-                        className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-muted ${
+                        className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-muted ${
                           selectedFile?.path === entry.path ? "bg-brand/30 font-semibold" : ""
                         }`}
                       >
-                        {entry.type === "dir" ? (
-                          <Folder className="h-3.5 w-3.5 shrink-0 text-amber-700" />
-                        ) : (
-                          <FileCode2 className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
-                        )}
-                        <span className="truncate text-ink">{entry.name}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          {entry.type === "dir" ? (
+                            <Folder className="h-3.5 w-3.5 shrink-0 text-amber-700" />
+                          ) : (
+                            <FileCode2 className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
+                          )}
+                          <span className="truncate text-ink">{entry.name}</span>
+                        </div>
+                        {entry.gitStatus && renderGitStatusBadge(entry.gitStatus)}
                       </button>
                     ))}
                   </div>
 
                   <div className="mt-4 space-y-2 border-t border-surface-border pt-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-ink">Task Branch (Protected base blocked)</span>
+                      <button
+                        type="button"
+                        onClick={() => setBranchName(`codynex/feature-${Date.now().toString(36)}`)}
+                        className="text-[11px] text-brand-ink hover:underline font-bold"
+                      >
+                        + New Branch
+                      </button>
+                    </div>
                     <Input
-                      label="Task Branch (Protected base blocked)"
                       value={branchName}
                       onChange={(e) => setBranchName(e.target.value)}
                     />
@@ -767,7 +958,65 @@ export default function GithubPage() {
                 </div>
 
                 <div className="space-y-4 p-4 lg:col-span-2">
-                  {selectedFile ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-surface-border pb-3">
+                    <div className="flex rounded-md border border-surface-border bg-surface-muted p-0.5 text-xs font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => setEditorTab("CODEX")}
+                        className={cn(
+                          "flex items-center gap-1.5 rounded px-3 py-1 transition-colors",
+                          editorTab === "CODEX"
+                            ? "bg-brand text-brand-ink"
+                            : "text-ink-muted hover:text-ink"
+                        )}
+                      >
+                        <Zap className="h-3.5 w-3.5" />
+                        Codex Live Stream &amp; Diffs
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditorTab("MANUAL")}
+                        className={cn(
+                          "flex items-center gap-1.5 rounded px-3 py-1 transition-colors",
+                          editorTab === "MANUAL"
+                            ? "bg-brand text-brand-ink"
+                            : "text-ink-muted hover:text-ink"
+                        )}
+                      >
+                        <FileCode2 className="h-3.5 w-3.5" />
+                        Manual File Editor
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs">
+                      {workspace.gitState.counts && (
+                        <div className="flex items-center gap-1 text-[11px]">
+                          {workspace.gitState.counts.added > 0 && (
+                            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 font-bold font-mono text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                              +{workspace.gitState.counts.added} A
+                            </span>
+                          )}
+                          {workspace.gitState.counts.modified > 0 && (
+                            <span className="rounded bg-amber-500/20 px-1.5 py-0.5 font-bold font-mono text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                              ~{workspace.gitState.counts.modified} M
+                            </span>
+                          )}
+                          {workspace.gitState.counts.untracked > 0 && (
+                            <span className="rounded bg-sky-500/20 px-1.5 py-0.5 font-bold font-mono text-sky-700 dark:text-sky-400 border border-sky-500/30">
+                              ?{workspace.gitState.counts.untracked} U
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {editorTab === "CODEX" ? (
+                    <LiveCodexFileEditor
+                      repoId={activeRepo.id}
+                      initialFilePath={selectedFile?.path}
+                    />
+                  ) : selectedFile ? (
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-mono text-xs font-bold text-ink">
@@ -858,7 +1107,167 @@ export default function GithubPage() {
                   )}
                 </div>
               </div>
-            )}
+
+              {/* Full-width Interactive Git Terminal Console */}
+              <div className="border-t border-surface-border bg-[#0d1117] p-4 text-[#c9d1d9]">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-[#30363d] pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Terminal className="h-4 w-4 text-[#58a6ff]" />
+                    <span className="font-mono text-xs font-bold text-white">
+                      Workspace Git Terminal
+                    </span>
+                    <span className="rounded bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#7ee787]">
+                      {activeRepo.owner}/{activeRepo.name} ({workspace.gitState.branch})
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#8b949e]">
+                      Quick Git:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRunTerminalCommand("git status")}
+                      disabled={terminalRunning}
+                      className="rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#58a6ff] hover:bg-[#30363d] transition-colors"
+                    >
+                      git status
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRunTerminalCommand("git add -A")}
+                      disabled={terminalRunning}
+                      className="rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#7ee787] hover:bg-[#30363d] transition-colors"
+                    >
+                      git add -A
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleRunTerminalCommand(
+                          `git commit -m "feat(operator): save workspace updates on ${workspace.gitState.branch}"`
+                        )
+                      }
+                      disabled={terminalRunning}
+                      className="rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#d2a8ff] hover:bg-[#30363d] transition-colors"
+                    >
+                      git commit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRunTerminalCommand("git diff")}
+                      disabled={terminalRunning}
+                      className="rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#ffa657] hover:bg-[#30363d] transition-colors"
+                    >
+                      git diff
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRunTerminalCommand("git log --oneline -5")}
+                      disabled={terminalRunning}
+                      className="rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#79c0ff] hover:bg-[#30363d] transition-colors"
+                    >
+                      git log -5
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRunTerminalCommand("git branch -a")}
+                      disabled={terminalRunning}
+                      className="rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#ff7b72] hover:bg-[#30363d] transition-colors"
+                    >
+                      git branch -a
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRunTerminalCommand("npm install")}
+                      disabled={terminalRunning}
+                      className="rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#e3b341] hover:bg-[#30363d] transition-colors"
+                    >
+                      npm install
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRunTerminalCommand("npm test")}
+                      disabled={terminalRunning}
+                      className="rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#56d364] hover:bg-[#30363d] transition-colors"
+                    >
+                      npm test
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTerminalLogs([])}
+                      className="flex items-center gap-1 rounded border border-[#30363d] bg-[#21262d] px-2 py-0.5 font-mono text-[11px] text-[#8b949e] hover:bg-[#30363d] hover:text-white transition-colors"
+                      title="Clear console output"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                {/* Terminal Output Stream */}
+                <div className="max-h-64 overflow-y-auto space-y-2.5 font-mono text-xs pr-1">
+                  {terminalLogs.map((log, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex items-center gap-2 text-[#8b949e]">
+                        <span className="text-[#7ee787]">➜</span>
+                        <span className="font-bold text-[#58a6ff]">{activeRepo.name}</span>
+                        <span className="text-[#8b949e]">git:(</span>
+                        <span className="text-[#ff7b72]">{workspace.gitState.branch}</span>
+                        <span className="text-[#8b949e]">)</span>
+                        <span className="font-semibold text-white">$ {log.command}</span>
+                        <span className="ml-auto text-[10px] text-[#484f58]">{log.timestamp}</span>
+                      </div>
+                      {log.stdout && (
+                        <pre className="whitespace-pre-wrap text-[#c9d1d9] pl-4 font-mono text-[11.5px] leading-relaxed">
+                          {log.stdout}
+                        </pre>
+                      )}
+                      {log.stderr && (
+                        <pre
+                          className={`whitespace-pre-wrap pl-4 font-mono text-[11.5px] leading-relaxed ${
+                            log.exitCode !== 0 ? "text-[#f85149]" : "text-[#8b949e]"
+                          }`}
+                        >
+                          {log.stderr}
+                        </pre>
+                      )}
+                    </div>
+                  ))}
+                  <div ref={terminalBottomRef} />
+                </div>
+
+                {/* Terminal Input Prompt */}
+                <div className="mt-3 flex items-center gap-2 rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 font-mono text-xs">
+                  <span className="font-bold text-[#7ee787]">➜</span>
+                  <span className="font-bold text-[#58a6ff]">{activeRepo.name}</span>
+                  <span className="text-[#8b949e]">$</span>
+                  <input
+                    type="text"
+                    placeholder="Type git status, git add -A, git commit -m '...', git diff, git branch..."
+                    value={terminalInput}
+                    onChange={(e) => setTerminalInput(e.target.value)}
+                    onKeyDown={handleTerminalKeyDown}
+                    disabled={terminalRunning}
+                    className="flex-1 bg-transparent font-mono text-xs text-white placeholder-[#484f58] outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleRunTerminalCommand()}
+                    disabled={terminalRunning || !terminalInput.trim()}
+                    className="flex items-center gap-1 rounded bg-[#238636] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#2ea043] disabled:opacity-40 transition-colors"
+                  >
+                    {terminalRunning ? (
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <CornerDownLeft className="h-3 w-3" />
+                    )}
+                    <span>Run</span>
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
           </Card>
         )}
       </div>

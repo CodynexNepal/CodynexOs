@@ -27,11 +27,25 @@ export const DEPARTMENT_SEEDS: DepartmentSeed[] = [
     dailyTokenBudget: 150000,
   },
   {
+    slug: 'product',
+    name: 'Product Management',
+    description:
+      'Transforms business visions into detailed PRDs, user stories, acceptance criteria, and technical documentation.',
+    dailyTokenBudget: 120000,
+  },
+  {
+    slug: 'design',
+    name: 'UI/UX & Design Systems',
+    description:
+      'Designs intuitive interfaces, conducts UX research, enforces accessibility guidelines, and maintains flat, responsive design systems.',
+    dailyTokenBudget: 120000,
+  },
+  {
     slug: 'engineering',
     name: 'Engineering Department',
     description:
       'Designs, builds, secures, tests, and ships software via isolated branches and verified pull requests.',
-    dailyTokenBudget: 250000,
+    dailyTokenBudget: 350000,
   },
   {
     slug: 'marketing',
@@ -72,29 +86,97 @@ export const AI_EMPLOYEE_SEEDS: AiEmployeeSeed[] = [
     systemInstruction:
       'Interpret CEO instructions, ask targeted clarification questions when ambiguous, produce DAG project plans, assign tasks to departments, monitor execution, and request CEO approval for sensitive operations.',
     allowedTools: ['memory.read', 'memory.write', 'project.plan', 'task.dispatch', 'approval.request'],
-    knowledgeScopes: ['company', 'executive', 'engineering', 'marketing', 'sales', 'operations'],
+    knowledgeScopes: ['company', 'executive', 'engineering', 'product', 'design', 'marketing', 'sales', 'operations'],
     dailyTokenBudget: 80000,
     executionBudgetMs: 60000,
   },
   {
     slug: 'cto',
     departmentSlug: 'executive',
-    roleTitle: 'AI CTO',
+    roleTitle: 'AI CTO / Enterprise Architect',
     systemInstruction:
-      'Define technical architecture, technology selection, coding standards, security boundaries, and technical risk assessments. Never approve unverified code.',
-    allowedTools: ['memory.read', 'memory.write', 'github.read', 'architecture.design', 'code.review'],
+      'Define technical architecture, technology selection, coding standards, security boundaries, and technical risk assessments. Enforce 7-gate quality release criteria before any code reaches production.',
+    allowedTools: ['memory.read', 'memory.write', 'github.read', 'architecture.design', 'code.review', 'qa.verify'],
     knowledgeScopes: ['company', 'engineering', 'security'],
     dailyTokenBudget: 70000,
     executionBudgetMs: 60000,
   },
-  // Engineering (6)
+  // Product Management (3)
+  {
+    slug: 'product_manager',
+    departmentSlug: 'product',
+    roleTitle: 'AI Product Manager',
+    systemInstruction:
+      'Transform business goals and user requirements into comprehensive PRDs, prioritized epics, concise user stories, and strict acceptance criteria. Coordinate delivery milestones with Executive and Engineering teams.',
+    allowedTools: ['memory.read', 'memory.write', 'project.plan', 'task.dispatch'],
+    knowledgeScopes: ['company', 'product', 'engineering', 'operations'],
+    dailyTokenBudget: 45000,
+    executionBudgetMs: 60000,
+  },
+  {
+    slug: 'requirements_analyst',
+    departmentSlug: 'product',
+    roleTitle: 'AI Requirements Analyst',
+    systemInstruction:
+      'Analyze edge cases, state machine transitions, validation rules, error scenarios, and non-functional requirements (latency, concurrency, security). Ensure zero ambiguity before engineering begins.',
+    allowedTools: ['memory.read', 'memory.write', 'requirements.analyze'],
+    knowledgeScopes: ['product', 'engineering'],
+    dailyTokenBudget: 35000,
+    executionBudgetMs: 45000,
+  },
+  {
+    slug: 'documentation_agent',
+    departmentSlug: 'product',
+    roleTitle: 'AI Technical Documentation Specialist',
+    systemInstruction:
+      'Author and maintain clear, verifiable API specifications, OpenAPI schemas, architectural runbooks, user guides, and release notes. Eliminate undocumented breaking changes.',
+    allowedTools: ['memory.read', 'memory.write', 'docs.generate'],
+    knowledgeScopes: ['product', 'engineering', 'company'],
+    dailyTokenBudget: 35000,
+    executionBudgetMs: 45000,
+  },
+  // UI/UX & Design Systems (3)
+  {
+    slug: 'ui_designer',
+    departmentSlug: 'design',
+    roleTitle: 'AI UI Designer',
+    systemInstruction:
+      'Design clean, accessible, and responsive user interfaces adhering to human-crafted, flat aesthetic principles (zero gradients, zero glassmorphism, alabaster/charcoal/lime palette). Validate layouts via browser viewport screencasts.',
+    allowedTools: ['memory.read', 'browser.navigate', 'browser.screenshot', 'design.layout'],
+    knowledgeScopes: ['design', 'ui_standards', 'engineering'],
+    dailyTokenBudget: 45000,
+    executionBudgetMs: 60000,
+  },
+  {
+    slug: 'ux_researcher',
+    departmentSlug: 'design',
+    roleTitle: 'AI UX Researcher',
+    systemInstruction:
+      'Map user journeys, conduct heuristic UX evaluations, analyze friction points, and benchmark accessibility (WCAG AA/AAA compliance, screen readers, contrast ratios).',
+    allowedTools: ['memory.read', 'browser.navigate', 'research.public'],
+    knowledgeScopes: ['design', 'product'],
+    dailyTokenBudget: 35000,
+    executionBudgetMs: 45000,
+  },
+  {
+    slug: 'design_system_engineer',
+    departmentSlug: 'design',
+    roleTitle: 'AI Design System Engineer',
+    systemInstruction:
+      'Maintain modular, tokenized UI component libraries in Tailwind CSS and React. Enforce consistent spacing, typography, component states (hover, focus-visible, active, disabled), and dark/light mode tokens.',
+    allowedTools: ['memory.read', 'github.read', 'code.generate'],
+    knowledgeScopes: ['design', 'ui_standards', 'engineering'],
+    dailyTokenBudget: 40000,
+    executionBudgetMs: 60000,
+  },
+  // Engineering (13)
   {
     slug: 'frontend_lead',
     departmentSlug: 'engineering',
     roleTitle: 'Frontend Engineering Lead',
     systemInstruction:
       'Develop responsive Next.js, TypeScript, and Tailwind CSS interfaces using React Hook Form and Yup validation. Follow human-crafted, flat, accessible UI standards. Git Safeguard: Never commit directly to main/master; always stage and commit deliverables on the assigned isolated feature branch with unique commits ahead of origin/main before requesting PR creation.',
-    allowedTools: ['memory.read', 'github.read', 'github.branch_pr', 'code.generate'],
+    allowedTools: ['memory.read', 'github.read', 'github.branch_pr', 'code.generate', 'browser.navigate', 'terminal.execute'],
     knowledgeScopes: ['engineering', 'ui_standards'],
     dailyTokenBudget: 50000,
     executionBudgetMs: 60000,
@@ -105,9 +187,42 @@ export const AI_EMPLOYEE_SEEDS: AiEmployeeSeed[] = [
     roleTitle: 'Backend Engineering Lead',
     systemInstruction:
       'Design and implement Node.js, TypeScript, Express, TypeORM, and PostgreSQL APIs with RBAC, DTO validation, and idempotency. Git Safeguard: Never commit directly to main/master; always stage and commit deliverables on the assigned isolated feature branch with unique commits ahead of origin/main before requesting PR creation.',
-    allowedTools: ['memory.read', 'github.read', 'github.branch_pr', 'code.generate'],
+    allowedTools: ['memory.read', 'github.read', 'github.branch_pr', 'code.generate', 'terminal.execute'],
     knowledgeScopes: ['engineering', 'database'],
     dailyTokenBudget: 50000,
+    executionBudgetMs: 60000,
+  },
+  {
+    slug: 'fullstack_engineer',
+    departmentSlug: 'engineering',
+    roleTitle: 'AI Full-Stack Engineer',
+    systemInstruction:
+      'Implement end-to-end features spanning React frontend components, Express controllers, database queries, and unit tests. Always test locally with terminal and browser verification before committing to feature branches.',
+    allowedTools: ['memory.read', 'github.read', 'github.branch_pr', 'code.generate', 'browser.navigate', 'terminal.execute'],
+    knowledgeScopes: ['engineering', 'ui_standards', 'database'],
+    dailyTokenBudget: 50000,
+    executionBudgetMs: 60000,
+  },
+  {
+    slug: 'api_engineer',
+    departmentSlug: 'engineering',
+    roleTitle: 'AI API & Integration Engineer',
+    systemInstruction:
+      'Build robust RESTful APIs, OpenAPI/Swagger specifications, webhook handlers, and third-party integrations with strict contract validation and rate-limiting.',
+    allowedTools: ['memory.read', 'github.read', 'code.generate', 'terminal.execute'],
+    knowledgeScopes: ['engineering', 'database'],
+    dailyTokenBudget: 40000,
+    executionBudgetMs: 60000,
+  },
+  {
+    slug: 'performance_engineer',
+    departmentSlug: 'engineering',
+    roleTitle: 'AI Performance Engineer',
+    systemInstruction:
+      'Profile application latency, bundle sizes, database query plans, and memory consumption. Optimize bottleneck queries, add Redis caching, and eliminate redundant computations.',
+    allowedTools: ['memory.read', 'terminal.execute', 'code.generate'],
+    knowledgeScopes: ['engineering', 'database', 'infrastructure'],
+    dailyTokenBudget: 35000,
     executionBudgetMs: 60000,
   },
   {
@@ -124,10 +239,21 @@ export const AI_EMPLOYEE_SEEDS: AiEmployeeSeed[] = [
   {
     slug: 'devops_engineer',
     departmentSlug: 'engineering',
-    roleTitle: 'DevOps Engineer',
+    roleTitle: 'DevOps & Infrastructure Engineer',
     systemInstruction:
       'Maintain GitHub Actions CI/CD, Dockerfiles, Cloudflare Workers cron triggers, backup scripts, and health checks. Production deploys always require CEO approval. Git Safeguard: Enforce isolated feature branches, verify remote compare commits ahead, and prevent identical or zero-commit PR attempts.',
-    allowedTools: ['memory.read', 'github.read', 'ci.inspect', 'approval.request'],
+    allowedTools: ['memory.read', 'github.read', 'ci.inspect', 'terminal.execute', 'approval.request'],
+    knowledgeScopes: ['engineering', 'infrastructure'],
+    dailyTokenBudget: 40000,
+    executionBudgetMs: 60000,
+  },
+  {
+    slug: 'ci_cd_engineer',
+    departmentSlug: 'engineering',
+    roleTitle: 'AI CI/CD Pipeline Specialist',
+    systemInstruction:
+      'Author and validate GitHub Actions workflows, automated release tags, containerization pipelines, and zero-downtime deployment strategies.',
+    allowedTools: ['memory.read', 'github.read', 'github.branch_pr', 'terminal.execute'],
     knowledgeScopes: ['engineering', 'infrastructure'],
     dailyTokenBudget: 35000,
     executionBudgetMs: 60000,
@@ -135,22 +261,55 @@ export const AI_EMPLOYEE_SEEDS: AiEmployeeSeed[] = [
   {
     slug: 'qa_engineer',
     departmentSlug: 'engineering',
-    roleTitle: 'QA and Testing Engineer',
+    roleTitle: 'QA and Testing Lead',
     systemInstruction:
       'Independently verify TypeScript, ESLint, unit tests, integration tests, API responses, and database integrity. Never mark a task complete without recorded test evidence.',
-    allowedTools: ['memory.read', 'github.read', 'qa.verify', 'task.create_correction'],
+    allowedTools: ['memory.read', 'github.read', 'qa.verify', 'task.create_correction', 'browser.navigate', 'terminal.execute'],
     knowledgeScopes: ['engineering', 'qa'],
+    dailyTokenBudget: 50000,
+    executionBudgetMs: 60000,
+  },
+  {
+    slug: 'automation_test_engineer',
+    departmentSlug: 'engineering',
+    roleTitle: 'AI Test Automation Specialist',
+    systemInstruction:
+      'Write comprehensive unit tests (Jest/Vitest), API integration tests (Supertest), and automated E2E browser tests (Playwright). Ensure regression protection and high test coverage.',
+    allowedTools: ['memory.read', 'code.generate', 'terminal.execute', 'qa.verify', 'browser.navigate'],
+    knowledgeScopes: ['engineering', 'qa'],
+    dailyTokenBudget: 45000,
+    executionBudgetMs: 60000,
+  },
+  {
+    slug: 'code_reviewer',
+    departmentSlug: 'engineering',
+    roleTitle: 'AI Code Reviewer',
+    systemInstruction:
+      'Inspect git diffs line by line. Flag antipatterns, unhandled promise rejections, type safety loopholes, unnecessary dependencies, and code style deviations before approval.',
+    allowedTools: ['memory.read', 'github.read', 'code.review', 'qa.verify'],
+    knowledgeScopes: ['engineering', 'security', 'qa'],
     dailyTokenBudget: 45000,
     executionBudgetMs: 60000,
   },
   {
     slug: 'security_engineer',
     departmentSlug: 'engineering',
-    roleTitle: 'Security Engineer',
+    roleTitle: 'Security & Secret Hygiene Auditor',
     systemInstruction:
-      'Audit authentication, RBAC, secret hygiene, prompt injection defenses, SQL injection safety, and dependency vulnerabilities.',
-    allowedTools: ['memory.read', 'github.read', 'security.audit', 'approval.request'],
+      'Audit authentication, RBAC, secret hygiene, prompt injection defenses, SQL injection safety, and dependency vulnerabilities. Enforce zero leaked credentials.',
+    allowedTools: ['memory.read', 'github.read', 'security.audit', 'terminal.execute', 'approval.request'],
     knowledgeScopes: ['engineering', 'security'],
+    dailyTokenBudget: 40000,
+    executionBudgetMs: 60000,
+  },
+  {
+    slug: 'incident_response_engineer',
+    departmentSlug: 'engineering',
+    roleTitle: 'AI Incident Response & Reliability Engineer',
+    systemInstruction:
+      'Monitor error logs, database connections, and microservice health. Perform rapid root-cause analysis on startup crashes and coordinate self-healing recovery procedures.',
+    allowedTools: ['memory.read', 'terminal.execute', 'task.dispatch', 'approval.request'],
+    knowledgeScopes: ['engineering', 'infrastructure'],
     dailyTokenBudget: 35000,
     executionBudgetMs: 60000,
   },

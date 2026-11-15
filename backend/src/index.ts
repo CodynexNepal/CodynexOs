@@ -1,4 +1,15 @@
 import 'reflect-metadata';
+import dns from 'dns';
+import net from 'net';
+
+// Prevent Node.js from hanging on unreachable IPv6 routes (Happy Eyeballs / RFC 8305) on Windows
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
+if (typeof (net as Record<string, unknown>).setDefaultAutoSelectFamily === 'function') {
+  (net as { setDefaultAutoSelectFamily: (val: boolean) => void }).setDefaultAutoSelectFamily(false);
+}
+
 import http from 'http';
 import { dotEnvConfig } from './configs/envConfig';
 import { createApp } from './configs/app';
@@ -45,9 +56,34 @@ const { PORT } = dotEnvConfig;
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
   } catch (err) {
+    const code = (err as Record<string, unknown>)?.code;
+    const detail = (err as Record<string, unknown>)?.detail;
+    const driverErr = (err as Record<string, unknown>)?.driverError;
+    const message = err instanceof Error ? err.message : String(err);
+
+    const resolvedError =
+      (message && message.trim().length > 0)
+        ? message
+        : detail
+          ? String(detail)
+          : driverErr
+            ? String(driverErr)
+            : code
+              ? `Database Error (code: ${code})`
+              : err instanceof Error && err.name
+                ? err.name
+                : 'Unknown Fatal Startup Error';
+
     logger.fatal('Failed to start CodyNex OS Backend', {
-      error: err instanceof Error ? err.message : String(err),
+      error: resolvedError,
+      code,
+      detail,
+      stack: err instanceof Error ? err.stack : undefined,
     });
+    console.error('FATAL STARTUP EXCEPTION:', err);
+    if (err instanceof Error && err.stack) {
+      console.error(err.stack);
+    }
     process.exit(1);
   }
 })();

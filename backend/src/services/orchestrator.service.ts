@@ -1,6 +1,9 @@
 import os from 'os';
+import path from 'path';
+import fsSync from 'fs';
 import { TaskRepository } from '../repository/task.repository';
 import { TaskEntity } from '../entities/task.entity';
+import { GithubRepositoryEntity } from '../entities/github-repository.entity';
 import { ProjectRepository } from '../repository/project.repository';
 import { MemoryRepository } from '../repository/memory.repository';
 import { GovernanceRepository } from '../repository/governance.repository';
@@ -121,6 +124,109 @@ export class OrchestratorService {
 
     socketServer.emit('agent:activity', stepPayload);
     socketServer.emit('task:step', stepPayload);
+  }
+
+  private isCodeImplementationTask(task: TaskEntity): boolean {
+    const codeTaskTypes = new Set([
+      'code_generate',
+      'code',
+      'frontend',
+      'backend',
+      'feature',
+      'code_implementation',
+    ]);
+    if (codeTaskTypes.has(task.taskType)) return true;
+    if (task.department?.slug === 'engineering') {
+      const nonCodeTypes = new Set([
+        'qa_verify',
+        'repo_provision',
+        'github_inspect',
+        'github_push_pr',
+        'devops_deploy',
+        'ui_ux_design',
+        'architecture',
+      ]);
+      if (nonCodeTypes.has(task.taskType)) return false;
+      const lower = `${task.title} ${task.description || ''}`.toLowerCase();
+      return /\b(code|implement|build|component|feature|frontend|backend|api|controller|service|migration|fix|page|carousel|ui)\b/i.test(
+        lower,
+      );
+    }
+    return false;
+  }
+
+  private async resolveRepositoryForTask(task: TaskEntity): Promise<GithubRepositoryEntity | null> {
+    // 1. Direct inputPayload.repoId
+    if (typeof task.inputPayload?.repoId === 'string' && task.inputPayload.repoId.trim()) {
+      const repo = await this.engRepo.findRepoById(task.inputPayload.repoId.trim());
+      if (repo) return repo;
+    }
+
+    // 2. Sibling tasks in the same project
+    if (task.projectId) {
+      const siblings = await this.taskRepo.findAll({ projectId: task.projectId });
+      for (const sib of siblings) {
+        const sibRepoId = typeof sib.inputPayload?.repoId === 'string' ? sib.inputPayload.repoId.trim() : '';
+        if (sibRepoId) {
+          const repo = await this.engRepo.findRepoById(sibRepoId);
+          if (repo) return repo;
+        }
+      }
+    }
+
+    // 3. Search connected repos in database
+    const allRepos = await this.engRepo.findAllRepos();
+    const taskContext = `${task.title} ${task.description || ''} ${task.project?.title || ''} ${task.inputPayload?.instruction || ''}`.toLowerCase();
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normContext = normalize(taskContext);
+
+    if (allRepos.length > 0) {
+      const matched = allRepos.find((r) => {
+        const normName = normalize(r.name);
+        return normName.length >= 3 && (normContext.includes(normName) || normName.includes(normContext));
+      });
+      if (matched) return matched;
+    }
+
+    // 4. Check workspaces directory on disk for existing repos (e.g. backend/workspaces/CodynexNepal/aliza-wears)
+    const workspacesBase = path.resolve(process.cwd(), 'workspaces');
+    if (fsSync.existsSync(workspacesBase)) {
+      try {
+        const owners = fsSync.readdirSync(workspacesBase, { withFileTypes: true }).filter((d) => d.isDirectory());
+        for (const ownerDir of owners) {
+          const ownerPath = path.join(workspacesBase, ownerDir.name);
+          const repos = fsSync.readdirSync(ownerPath, { withFileTypes: true }).filter((d) => d.isDirectory());
+          for (const repoDir of repos) {
+            const fullRepoPath = path.join(ownerPath, repoDir.name);
+            const gitPath = path.join(fullRepoPath, '.git');
+            if (fsSync.existsSync(gitPath)) {
+              const normRepo = normalize(repoDir.name);
+              if (normContext.includes(normRepo) || normRepo.includes(normContext) || (owners.length === 1 && repos.length === 1)) {
+                let existing = await this.engRepo.findRepoByOwnerName(ownerDir.name, repoDir.name);
+                if (!existing) {
+                  existing = await this.engRepo.saveRepo({
+                    name: repoDir.name,
+                    owner: ownerDir.name,
+                    defaultBranch: 'main',
+                    isWriteAuthorized: true,
+                  });
+                }
+                return existing;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn('[Orchestrator] Error scanning local workspaces', { error: (err as Error).message });
+      }
+    }
+
+    // 5. Fallback: if allRepos has repos, pick the first active one
+    if (allRepos.length > 0) {
+      return allRepos[0] ?? null;
+    }
+
+    return null;
   }
 
   private async executeClaimedTask(taskId: string): Promise<void> {
@@ -328,7 +434,7 @@ export class OrchestratorService {
           rawContent: JSON.stringify(report),
           parsed: report,
         });
-      } else if (task.taskType === 'code_generate' && this.engineeringService) {
+      } else if (this.isCodeImplementationTask(task) && this.engineeringService) {
         await this.reportStep({
           task,
           executionId: execution.id,
@@ -336,13 +442,38 @@ export class OrchestratorService {
           totalSteps: 4,
           phase: 'CODE_GENERATION',
           action: 'Analyzing Architecture & SOPs',
-          detail: `Reviewing task directives, system architecture, and department playbooks`,
+          detail: `Reviewing task directives, system architecture, and department playbooks for '${task.title}'`,
+        });
+
+        const targetRepo = await this.resolveRepositoryForTask(task);
+        const repoId = targetRepo ? targetRepo.id : (typeof task.inputPayload.repoId === 'string' ? task.inputPayload.repoId : '');
+
+        if (!repoId) {
+          throw new Error('Implementation workspace is unavailable: no repository was provisioned or found for this code task.');
+        }
+
+        const branchName =
+          typeof task.inputPayload.branchName === 'string' && task.inputPayload.branchName.trim()
+            ? task.inputPayload.branchName.trim()
+            : (targetRepo?.defaultBranch && targetRepo.defaultBranch !== 'main' && targetRepo.defaultBranch !== 'master'
+                ? targetRepo.defaultBranch
+                : `codynex/task-${task.id.slice(0, 6)}`);
+
+        // Propagate resolved repo and branch to current and sibling tasks
+        await this.taskRepo.updateById(task.id, {
+          inputPayload: {
+            ...task.inputPayload,
+            repoId,
+            branchName,
+            repoName: targetRepo?.name,
+            repoOwner: targetRepo?.owner,
+          },
         });
 
         const aiRes = await this.modelRouter.complete(
           {
-            systemPrompt: `${emp?.systemInstruction || ''}\nReturn JSON with keys: summary, files (array of {path, content}), deliverables (array of {phase, details}), risks (array). The files array is mandatory for an implementation task: return one or more complete, runnable source files with non-empty content. Do not return an analysis-only report. Write complete TypeScript/Node/README files.`,
-            userPrompt: `Trusted Company SOPs:\n${
+            systemPrompt: `${emp?.systemInstruction || ''}\nReturn JSON with keys: summary, files (array of {path, content}), deliverables (array of {phase, details}), risks (array). The files array is MANDATORY for an implementation task: return one or more complete, runnable source files with non-empty content. Do not return an analysis-only report. Write complete TypeScript/Node/README files. Every file returned will be written to disk in the real repository and committed to git.`,
+            userPrompt: `Target Repository: ${targetRepo?.owner || 'workspace'}/${targetRepo?.name || 'repository'} (branch: ${branchName})\nTrusted Company SOPs:\n${
               sops.length > 0
                 ? sops.map((s) => `- ${s.title}: ${s.contentMd.slice(0, 300)}`).join('\n')
                 : 'None'
@@ -378,16 +509,7 @@ export class OrchestratorService {
           detail: `Synthesized implementation models, services & files via ${aiRes.provider}/${aiRes.model}`,
         });
 
-        const repoId = typeof task.inputPayload.repoId === 'string' ? task.inputPayload.repoId : '';
-        const branchName =
-          typeof task.inputPayload.branchName === 'string'
-            ? task.inputPayload.branchName
-            : `codynex/task-${task.id.slice(0, 6)}`;
         let writtenFiles: string[] = [];
-
-        if (!repoId) {
-          throw new Error('Implementation workspace is unavailable: no repository was provisioned for this code task.');
-        }
 
         if (Array.isArray(parsed?.files) && parsed.files.length > 0) {
           const validFiles = parsed.files.filter(
@@ -400,6 +522,53 @@ export class OrchestratorService {
           if (validFiles.length === 0) {
             throw new Error('Code generation returned no valid source files; the task cannot be completed without a workspace change.');
           }
+
+          // Live Codex streaming broadcast: stream each file edit event over Socket.io
+          for (const file of validFiles) {
+            const cleanPath = file.path.trim().replace(/\\/g, '/');
+            const lines = file.content.split('\n');
+            const totalLines = lines.length;
+
+            socketServer.emit('file:edit:start', {
+              repoId,
+              repoName: targetRepo?.name || 'workspace',
+              repoOwner: targetRepo?.owner || 'organization',
+              branchName,
+              filePath: cleanPath,
+              status: 'A',
+              agentName: emp?.roleTitle || emp?.slug || 'AI Software Engineer',
+              agentRole: emp?.roleTitle || 'Full-Stack Developer',
+              taskId: task.id,
+              projectId: task.projectId,
+              totalLines,
+              timestamp: new Date().toISOString(),
+            });
+
+            // Stream chunks for Codex-style typewriter animation on clients
+            const chunkSize = Math.max(1, Math.ceil(totalLines / 8));
+            for (let li = 0; li < totalLines; li += chunkSize) {
+              const currentSlice = lines.slice(0, li + chunkSize).join('\n');
+              socketServer.emit('file:stream', {
+                repoId,
+                repoName: targetRepo?.name || 'workspace',
+                repoOwner: targetRepo?.owner || 'organization',
+                branchName,
+                filePath: cleanPath,
+                status: 'A',
+                chunk: lines.slice(li, li + chunkSize).join('\n'),
+                currentContent: currentSlice,
+                currentLine: Math.min(totalLines, li + chunkSize),
+                totalLines,
+                progress: Math.min(100, Math.round(((li + chunkSize) / totalLines) * 100)),
+                agentName: emp?.roleTitle || emp?.slug || 'AI Software Engineer',
+                agentRole: emp?.roleTitle || 'Full-Stack Developer',
+                taskId: task.id,
+                projectId: task.projectId,
+              });
+              await new Promise((r) => setTimeout(r, 35));
+            }
+          }
+
           const resWrite = await this.engineeringService.writeWorkspaceFiles(
             repoId,
             branchName,
@@ -407,23 +576,64 @@ export class OrchestratorService {
             task.project?.createdBy || this.workerId,
           );
           writtenFiles = resWrite.written;
+
+          for (const writtenPath of writtenFiles) {
+            const matchedFile = validFiles.find((vf) => vf.path.trim() === writtenPath.trim());
+            const content = matchedFile?.content || '';
+            const lines = content.split('\n');
+            socketServer.emit('file:edit:complete', {
+              repoId,
+              repoName: targetRepo?.name || 'workspace',
+              repoOwner: targetRepo?.owner || 'organization',
+              branchName,
+              filePath: writtenPath,
+              status: 'A',
+              content,
+              totalLines: lines.length,
+              size: content.length,
+              agentName: emp?.roleTitle || emp?.slug || 'AI Software Engineer',
+              taskId: task.id,
+              projectId: task.projectId,
+              timestamp: new Date().toISOString(),
+            });
+          }
+
+          socketServer.emit('workspace:status', {
+            repoId,
+            repoName: targetRepo?.name || 'workspace',
+            branchName,
+            files: writtenFiles,
+          });
         } else {
           throw new Error('Code generation returned no source files; the task cannot be completed without a workspace change.');
         }
 
         if (writtenFiles.length === 0) {
-          throw new Error('No source files were written to the workspace; the task cannot be completed.');
+          throw new Error('Implementation task produced 0 workspace file modifications. No code was written.');
         }
 
-        await this.reportStep({
-          task,
-          executionId: execution.id,
-          stepNumber: 3,
-          totalSteps: 4,
-          phase: 'CODE_GENERATION',
-          action: 'Writing Files to Workspace Branch',
-          detail: `Wrote ${writtenFiles.length} file(s) into workspace branch '${branchName}'`,
-        });
+        // Real-time broadcast for every single file edited / created so CEO sees live file activity in repository
+        for (let fi = 0; fi < writtenFiles.length; fi++) {
+          const writtenPath = writtenFiles[fi];
+          await this.reportStep({
+            task,
+            executionId: execution.id,
+            stepNumber: 3,
+            totalSteps: 4,
+            phase: 'CODE_GENERATION',
+            action: 'File Modified in Repository',
+            detail: `[${fi + 1}/${writtenFiles.length}] Updated file '${writtenPath}' in '${targetRepo?.name || 'workspace'}' on branch '${branchName}'`,
+            metadata: {
+              filePath: writtenPath,
+              branchName,
+              repoId,
+              repoName: targetRepo?.name,
+              repoOwner: targetRepo?.owner,
+              fileIndex: fi + 1,
+              totalFiles: writtenFiles.length,
+            },
+          });
+        }
 
         await this.reportStep({
           task,
@@ -432,7 +642,12 @@ export class OrchestratorService {
           totalSteps: 4,
           phase: 'CODE_GENERATION',
           action: 'Engineering Deliverables Ready',
-          detail: `Implementation completed with ${writtenFiles.length} file(s) ready for QA verification`,
+          detail: `Implementation completed with ${writtenFiles.length} file(s) committed to '${branchName}' in '${targetRepo?.name || 'workspace'}'`,
+          metadata: {
+            writtenFiles,
+            branchName,
+            repoName: targetRepo?.name,
+          },
         });
 
         const report = {
@@ -767,8 +982,7 @@ export class OrchestratorService {
       } else {
         const isQa = task.taskType === 'qa_verify';
         const isArch = task.taskType === 'architecture';
-        const isCode = task.taskType === 'code';
-        const phaseName = isQa ? 'TESTING_QA' : isArch ? 'ARCHITECTURE' : isCode ? 'CODE_GENERATION' : 'ANALYSIS';
+        const phaseName = isQa ? 'TESTING_QA' : isArch ? 'ARCHITECTURE' : 'ANALYSIS';
 
         await this.reportStep({
           task,
@@ -780,9 +994,7 @@ export class OrchestratorService {
             ? 'Inspecting Deliverables & Requirements'
             : isArch
               ? 'Analyzing System Architecture'
-              : isCode
-                ? 'Component Architecture & State Design'
-                : 'Analyzing Directives & SOP Playbooks',
+              : 'Analyzing Directives & SOP Playbooks',
           detail: `Consulting trusted knowledge and memory context for '${task.title}'`,
         });
 
@@ -826,9 +1038,7 @@ export class OrchestratorService {
             ? 'Automated QA Assertions & Contract Verification'
             : isArch
               ? 'Architectural Blueprint Synthesis'
-              : isCode
-                ? 'Synthesizing Components & Code Logic'
-                : 'AI Execution & Synthesis',
+              : 'AI Execution & Synthesis',
           detail: `Generated structured deliverables via ${aiRes.provider}/${aiRes.model} (${totalTokens} tokens)`,
         });
 
@@ -857,9 +1067,7 @@ export class OrchestratorService {
             ? 'QA Release Certified'
             : isArch
               ? 'Architecture Approved & Dispatched'
-              : isCode
-                ? 'Implementation Verified & Ready'
-                : 'Deliverables Finalized',
+              : 'Deliverables Finalized',
           detail: isQa
             ? 'Automated QA assertions passed with 0 blocking errors'
             : `Completed deliverables recorded in project memory`,
@@ -943,14 +1151,23 @@ export class OrchestratorService {
       }
       }
 
+      let qaVerdict: QaVerdict | undefined;
+      let qaReportId: string | undefined;
+
       if (task.taskType === 'qa_verify') {
         const repoId = typeof task.inputPayload.repoId === 'string' ? task.inputPayload.repoId : '';
         if (repoId && this.engineeringService) {
-          await this.engineeringService.runWorkspaceChecks(
+          const checkRes = await this.engineeringService.runWorkspaceChecks(
             repoId,
             task.id,
             task.project?.createdBy || this.workerId,
           );
+          if (checkRes && 'verdict' in checkRes) {
+            qaVerdict = checkRes.verdict;
+            if ('id' in checkRes && typeof (checkRes as { id?: string }).id === 'string') {
+              qaReportId = (checkRes as { id: string }).id;
+            }
+          }
         } else {
           const qa = await this.engRepo.saveQaReport({
             taskId: task.id,
@@ -962,25 +1179,49 @@ export class OrchestratorService {
             ],
             summary: 'Automated QA verification completed.',
           });
-          await this.taskRepo.updateById(task.id, {
-            status: TaskStatus.COMPLETED,
-            outputPayload,
-            verificationResult: { qaReportId: qa.id, verdict: qa.verdict },
-            leaseOwner: null,
-            leaseExpiresAt: null,
-            completedAt: new Date(),
-          });
+          qaVerdict = qa.verdict;
+          qaReportId = qa.id;
         }
-      } else {
+      }
+
+      // If QA checks evaluated to FAILED, record accurate execution failure and exit cleanly
+      if (qaVerdict === QaVerdict.FAILED) {
         await this.taskRepo.updateById(task.id, {
-          status: TaskStatus.COMPLETED,
+          status: TaskStatus.FAILED,
           outputPayload,
-          verificationResult: { verifiedBy: emp?.slug ?? 'orchestrator', verifiedAt: new Date().toISOString() },
+          verificationResult: { qaReportId, verdict: qaVerdict },
           leaseOwner: null,
           leaseExpiresAt: null,
-          completedAt: new Date(),
         });
+        await this.taskRepo.updateExecution(execution.id, {
+          status: 'FAILED',
+          errorCode: 'QA_VERIFICATION_FAILED',
+          errorMessage: 'QA verification assertions failed on workspace files',
+          finishedAt: new Date(),
+        });
+        await this.taskRepo.appendLog(
+          task.id,
+          'WARN',
+          'QA verification completed: Quality assertions failed on workspace files.',
+          {},
+          execution.id,
+        );
+        socketServer.emit('task:updated', { taskId: task.id, status: TaskStatus.FAILED });
+        await this.reconcileProjectStatus(task.projectId);
+        return;
       }
+
+      // Mark task as COMPLETED in database
+      await this.taskRepo.updateById(task.id, {
+        status: TaskStatus.COMPLETED,
+        outputPayload,
+        verificationResult: qaReportId || qaVerdict
+          ? { qaReportId, verdict: qaVerdict ?? QaVerdict.PASSED }
+          : { verifiedBy: emp?.slug ?? 'orchestrator', verifiedAt: new Date().toISOString() },
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        completedAt: new Date(),
+      });
 
       await this.taskRepo.updateExecution(execution.id, {
         status: 'SUCCEEDED',
@@ -1038,8 +1279,36 @@ export class OrchestratorService {
           status: TaskStatus.FAILED,
           leaseOwner: null,
           leaseExpiresAt: null,
+          outputPayload: {
+            error: msg,
+            status: 'FAILED',
+            failedAt: new Date().toISOString(),
+          },
         });
-        await this.taskRepo.appendLog(task.id, 'ERROR', `Task failed permanently: ${msg}`, {}, execution.id);
+        await this.taskRepo.appendLog(task.id, 'ERROR', `Task failed permanently: ${msg}`, { error: msg }, execution.id);
+
+        const failPayload = {
+          stepNumber: 0,
+          totalSteps: 4,
+          phase: 'FAILURE',
+          action: 'Task Execution Failed',
+          detail: msg,
+          error: msg,
+          employeeId: task.assignedEmployeeId,
+          employeeRole: task.assignedEmployee?.roleTitle || 'AI Agent',
+          employeeSlug: task.assignedEmployee?.slug || 'agent',
+          departmentSlug: task.department?.slug || 'engineering',
+          departmentName: task.department?.name || 'Engineering',
+          taskId: task.id,
+          taskTitle: task.title,
+          projectId: task.projectId,
+          status: TaskStatus.FAILED,
+          timestamp: new Date().toISOString(),
+        };
+
+        socketServer.emit('task:updated', { taskId: task.id, status: TaskStatus.FAILED, error: msg });
+        socketServer.emit('task:step', failPayload);
+        socketServer.emit('agent:activity', failPayload);
 
         if (this.hrService && task.assignedEmployeeId) {
           await this.hrService.handleTaskFailure(task.id, task.assignedEmployeeId, msg).catch(() => {});
@@ -1065,6 +1334,28 @@ export class OrchestratorService {
           leaseExpiresAt: null,
           nextRunAt: new Date(Date.now() + delaySec * 1000),
         });
+
+        const retryPayload = {
+          stepNumber: 0,
+          totalSteps: 4,
+          phase: 'RETRY',
+          action: `Retrying (Attempt ${nextRetry}/${task.maxRetries})`,
+          detail: `Encountered recoverable error: ${msg}. Backing off for ${delaySec}s`,
+          employeeId: task.assignedEmployeeId,
+          employeeRole: task.assignedEmployee?.roleTitle || 'AI Agent',
+          employeeSlug: task.assignedEmployee?.slug || 'agent',
+          departmentSlug: task.department?.slug || 'engineering',
+          departmentName: task.department?.name || 'Engineering',
+          taskId: task.id,
+          taskTitle: task.title,
+          projectId: task.projectId,
+          status: TaskStatus.QUEUED,
+          timestamp: new Date().toISOString(),
+        };
+
+        socketServer.emit('task:updated', { taskId: task.id, status: TaskStatus.QUEUED, retryCount: nextRetry });
+        socketServer.emit('agent:activity', retryPayload);
+
         await this.taskRepo.appendLog(
           task.id,
           'WARN',

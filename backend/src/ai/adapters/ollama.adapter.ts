@@ -178,7 +178,7 @@ export class OllamaAdapter implements AiProviderAdapter {
       throw new AiProviderError(
         this.name,
         'NOT_CONFIGURED',
-        `Ollama local server unavailable: ${err instanceof Error ? err.message : String(err)}`,
+        `Ollama local server is unavailable at ${dotEnvConfig.OLLAMA_BASE_URL} (${err instanceof Error ? err.message : String(err)}). Setup: 1) Install from https://ollama.com, 2) Start with 'ollama serve', 3) Pull model with 'ollama run ${dotEnvConfig.OLLAMA_MODEL || 'qwen3:4b'}'.`,
         { category: 'UNAVAILABLE' },
       );
     } finally {

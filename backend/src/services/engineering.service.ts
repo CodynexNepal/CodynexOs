@@ -14,6 +14,7 @@ import {
 import { AuditService } from './audit.service';
 import { resolveRuntimeSecret } from './runtime-secrets.service';
 import { WorkspaceService } from './workspace.service';
+import { workspacePreviewService } from './workspace-preview.service';
 
 export class EngineeringService {
   private readonly workspaceService: WorkspaceService;
@@ -267,6 +268,7 @@ export class EngineeringService {
     }
     return result;
   }
+
 
   async probeGithubToken(target?: {
     owner?: string;
@@ -658,6 +660,7 @@ export class EngineeringService {
     return result;
   }
 
+
   async listWorkspaceFiles(repoId: string, subPath = '') {
     const repo = await this.engRepo.findRepoById(repoId);
     if (!repo) throw ApiError.notFound('Repository not found.');
@@ -675,7 +678,10 @@ export class EngineeringService {
     const repo = await this.engRepo.findRepoById(repoId);
     if (!repo) throw ApiError.notFound('Repository not found.');
     const content = await this.workspaceService.readFile(repo.owner, repo.name, filePath);
-    return { path: filePath, content };
+    const originalContent = await this.workspaceService.readOriginalFile(repo.owner, repo.name, filePath);
+    const isNew = originalContent === null;
+    const status = isNew ? 'A' : (content !== originalContent ? 'M' : 'U');
+    return { path: filePath, content, originalContent: originalContent ?? '', isNew, status };
   }
 
   async writeWorkspaceFiles(
@@ -711,6 +717,14 @@ export class EngineeringService {
         branchName,
         `feat(agent): write ${written.length} implementation file(s) on ${branchName}`,
       );
+    }
+
+    // Auto-install dependencies if package.json was written or updated by the agent
+    const hasPkgInFiles = files.some(
+      (f) => f.path.trim() === 'package.json' || f.path.trim().endsWith('/package.json'),
+    );
+    if (hasPkgInFiles) {
+      await this.workspaceService.installDependencies(repo.owner, repo.name).catch(() => {});
     }
 
     await this.auditService.log({
@@ -773,6 +787,62 @@ export class EngineeringService {
       commitSha: result.commitSha,
       branchName: params.branchName,
     };
+  }
+
+  async executeWorkspaceTerminal(params: {
+    repoId: string;
+    command: string;
+    actorId: string;
+  }) {
+    const repo = await this.engRepo.findRepoById(params.repoId);
+    if (!repo) throw ApiError.notFound('Repository not found.');
+
+    const token = await resolveRuntimeSecret('github_token');
+    await this.workspaceService.ensureClonedOrPulled({
+      owner: repo.owner,
+      name: repo.name,
+      defaultBranch: repo.defaultBranch,
+      token: token || undefined,
+    });
+
+    const result = await this.workspaceService.executeTerminalCommand({
+      owner: repo.owner,
+      name: repo.name,
+      command: params.command,
+      token: token || undefined,
+    });
+
+    await this.auditService.log({
+      actorType: 'USER',
+      actorId: params.actorId,
+      action: 'WORKSPACE_TERMINAL_EXECUTED',
+      resourceType: 'github_repository',
+      resourceId: repo.id,
+      metadata: {
+        command: params.command.slice(0, 100),
+        exitCode: result.exitCode,
+      },
+    });
+
+    return result;
+  }
+
+  async installWorkspaceDependencies(repoId: string, actorId: string) {
+    const repo = await this.engRepo.findRepoById(repoId);
+    if (!repo) throw ApiError.notFound('Repository not found.');
+
+    const result = await this.workspaceService.installDependencies(repo.owner, repo.name);
+
+    await this.auditService.log({
+      actorType: 'USER',
+      actorId,
+      action: 'WORKSPACE_DEPS_INSTALLED',
+      resourceType: 'github_repository',
+      resourceId: repo.id,
+      metadata: { success: result.success },
+    });
+
+    return result;
   }
 
   async runWorkspaceChecks(repoId: string, taskId: string | undefined, actorId: string) {
@@ -1377,5 +1447,11 @@ export class EngineeringService {
     });
 
     return report;
+  }
+
+  async getWorkspacePreviewInfo(repoId: string) {
+    const repo = await this.engRepo.findRepoById(repoId);
+    if (!repo) throw ApiError.notFound('Repository not found.');
+    return workspacePreviewService.getWorkspacePreviewInfo(repo.owner, repo.name);
   }
 }

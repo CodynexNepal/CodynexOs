@@ -8,6 +8,7 @@ import { CrmRepository } from '../repository/crm.repository';
 import { GovernanceRepository } from '../repository/governance.repository';
 import { BusinessRepository } from '../repository/business.repository';
 import { HrRepository } from '../repository/hr.repository';
+import { SocialMarketingRepository } from '../repository/social-marketing.repository';
 import { ModelRouterService } from '../ai/router/model-router.service';
 import { AuditService } from '../services/audit.service';
 import { BusinessEmailService } from '../services/business-email.service';
@@ -17,6 +18,7 @@ import { CommandService } from '../services/command.service';
 import { OrchestratorService } from '../services/orchestrator.service';
 import { EngineeringService } from '../services/engineering.service';
 import { CrmService } from '../services/crm.service';
+import { MarketingService } from '../services/marketing.service';
 import { DashboardService } from '../services/dashboard.service';
 import { HrService } from '../services/hr.service';
 import { AuthController } from '../controller/auth.controller';
@@ -85,6 +87,13 @@ export function getOsContainer(): OsContainer {
     hrService,
   );
   const crmService = new CrmService(crmRepo, governanceRepo, auditService, businessEmailService);
+  const socialMarketingRepo = new SocialMarketingRepository();
+  const marketingService = new MarketingService(
+    socialMarketingRepo,
+    modelRouter,
+    auditService,
+    notificationService,
+  );
   const dashboardService = new DashboardService(
     orgRepo,
     projectRepo,
@@ -118,6 +127,7 @@ export function getOsContainer(): OsContainer {
       modelRouter,
       auditService,
       businessEmailService,
+      marketingService,
     ),
     hrController: new HrController(hrService),
     hrService,

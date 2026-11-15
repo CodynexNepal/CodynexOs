@@ -8,6 +8,7 @@ import {
   Building2,
   CheckSquare,
   Coins,
+  Cpu,
   FolderKanban,
   GitBranch,
   GitPullRequest,
@@ -39,6 +40,7 @@ export const OS_NAVIGATION: NavGroup[] = [
     group: "Executive",
     items: [
       { label: "Overview", href: "/overview", icon: LayoutDashboard },
+      { label: "Autonomous Workspace", href: "/workspace", icon: Cpu },
       { label: "AI Command Center", href: "/command", icon: Terminal },
       { label: "Notifications", href: "/notifications", icon: Bell },
     ],

@@ -6,11 +6,39 @@ import { ApiError } from '../utils/api-error.util';
 
 const execFileAsync = promisify(execFile);
 
+export type GitFileStatusCode = 'U' | 'A' | 'M' | 'D' | 'R' | 'C' | '?';
+
+export interface GitFileStatusItem {
+  path: string;
+  code: GitFileStatusCode;
+  rawCode: string;
+  staged: boolean;
+  unstaged: boolean;
+  oldPath?: string;
+}
+
+export interface WorkspaceGitState {
+  branch: string;
+  status: string;
+  diff: string;
+  fileStatuses: GitFileStatusItem[];
+  counts: {
+    added: number;
+    modified: number;
+    untracked: number;
+    deleted: number;
+    renamed: number;
+    conflict: number;
+    total: number;
+  };
+}
+
 export interface WorkspaceEntry {
   name: string;
   path: string;
   type: 'file' | 'dir';
   size?: number;
+  gitStatus?: GitFileStatusCode;
 }
 
 export interface BranchPushResult {
@@ -19,6 +47,58 @@ export interface BranchPushResult {
   commitsCount: number;
   changedFiles: string[];
   isInitialBootstrap?: boolean;
+}
+
+export interface TerminalCommandResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  branch: string;
+}
+
+function parseCommandLine(cmd: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let inQuotes: '' | "'" | '"' = '';
+  let escapeNext = false;
+
+  for (let i = 0; i < cmd.length; i++) {
+    const char = cmd[i]!;
+
+    if (escapeNext) {
+      current += char;
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+
+    if (inQuotes) {
+      if (char === inQuotes) {
+        inQuotes = '';
+      } else {
+        current += char;
+      }
+    } else if (char === '"' || char === "'") {
+      inQuotes = char;
+    } else if (/\s/.test(char)) {
+      if (current.length > 0) {
+        args.push(current);
+        current = '';
+      }
+    } else {
+      current += char;
+    }
+  }
+
+  if (current.length > 0) {
+    args.push(current);
+  }
+
+  return args;
 }
 
 export class WorkspaceService {
@@ -50,7 +130,8 @@ export class WorkspaceService {
     token?: string,
   ): Promise<{ stdout: string; stderr: string }> {
     const finalArgs = [...args];
-    if (token && (args[0] === 'clone' || args[0] === 'pull' || args[0] === 'push' || args[0] === 'fetch')) {
+    const isNetworkCmd = args.some((a) => ['clone', 'pull', 'push', 'fetch'].includes(a));
+    if (token && isNetworkCmd) {
       const basic = Buffer.from(`x-access-token:${token}`, 'utf8').toString('base64');
       finalArgs.unshift(
         '-c',
@@ -65,7 +146,12 @@ export class WorkspaceService {
         cwd,
         timeout: 60000,
         maxBuffer: 4 * 1024 * 1024,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' },
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: '0',
+          GCM_INTERACTIVE: 'never',
+          GIT_CEILING_DIRECTORIES: this.rootDir,
+        },
       });
       return { stdout: result.stdout, stderr: result.stderr };
     } catch (err: any) {
@@ -108,19 +194,54 @@ export class WorkspaceService {
       () => false,
     );
 
-    if (!exists) {
-      await fs.mkdir(path.dirname(repoDir), { recursive: true });
-      await this.runGit(
-        path.dirname(repoDir),
-        ['clone', '--depth', '50', remoteUrl, repoDir],
-        params.token,
-      );
-      await this.runGit(repoDir, ['config', 'user.name', 'CodyNex OS Engineering']);
-      await this.runGit(repoDir, ['config', 'user.email', 'engineering@codynex.local']);
-      return { repoDir, action: 'cloned' };
+    let isValidGit = false;
+    if (exists) {
+      try {
+        const { stdout } = await this.runGit(repoDir, ['rev-parse', '--git-dir']);
+        isValidGit = stdout.trim() === '.git' || stdout.trim().replace(/\\/g, '/').endsWith('/.git');
+      } catch {
+        isValidGit = false;
+      }
     }
 
-    await this.runGit(repoDir, ['fetch', 'origin'], params.token);
+    if (!exists || !isValidGit) {
+      await fs.mkdir(repoDir, { recursive: true });
+      const entries = await fs.readdir(repoDir).catch(() => []);
+      const nonGitEntries = entries.filter((f) => f !== '.git');
+
+      if (nonGitEntries.length > 0) {
+        if (exists && !isValidGit) {
+          await fs.rm(gitDir, { recursive: true, force: true }).catch(() => {});
+        }
+        await this.runGit(repoDir, ['init', '-b', params.defaultBranch || 'main']);
+        await this.runGit(repoDir, ['remote', 'add', 'origin', remoteUrl]).catch(async () => {
+          await this.runGit(repoDir, ['remote', 'set-url', 'origin', remoteUrl]);
+        });
+        await this.runGit(repoDir, ['config', 'user.name', 'CodyNex OS Engineering']);
+        await this.runGit(repoDir, ['config', 'user.email', 'engineering@codynex.local']);
+        await this.runGit(repoDir, ['fetch', 'origin'], params.token).catch(() => {});
+        return { repoDir, action: 'cloned' };
+      } else {
+        await fs.rm(repoDir, { recursive: true, force: true }).catch(() => {});
+        await fs.mkdir(path.dirname(repoDir), { recursive: true });
+        await this.runGit(
+          path.dirname(repoDir),
+          ['clone', '--depth', '50', remoteUrl, repoDir],
+          params.token,
+        );
+        await this.runGit(repoDir, ['config', 'user.name', 'CodyNex OS Engineering']);
+        await this.runGit(repoDir, ['config', 'user.email', 'engineering@codynex.local']);
+        return { repoDir, action: 'cloned' };
+      }
+    }
+
+    // Ensure origin URL points strictly to this repository
+    const remoteUrlRes = await this.runGit(repoDir, ['remote', 'get-url', 'origin']).catch(() => ({ stdout: '' }));
+    if (!remoteUrlRes.stdout.includes(params.name)) {
+      await this.runGit(repoDir, ['remote', 'set-url', 'origin', remoteUrl]).catch(() => {});
+    }
+
+    await this.runGit(repoDir, ['fetch', 'origin'], params.token).catch(() => {});
     await this.runGit(repoDir, ['pull', '--ff-only', 'origin', params.defaultBranch], params.token).catch(
       () => {},
     );
@@ -136,7 +257,22 @@ export class WorkspaceService {
     }
   }
 
-  async listTree(owner: string, name: string, subPath = ''): Promise<WorkspaceEntry[]> {
+  async getGitStatusMap(owner: string, name: string): Promise<Map<string, GitFileStatusCode>> {
+    const map = new Map<string, GitFileStatusCode>();
+    try {
+      const repoDir = this.getRepoDir(owner, name);
+      const { stdout } = await this.runGit(repoDir, ['status', '--porcelain=v1', '-uall']);
+      const { fileStatuses } = this.parseGitStatusPorcelain(stdout);
+      for (const item of fileStatuses) {
+        map.set(item.path.replace(/\\/g, '/'), item.code);
+      }
+    } catch {
+      // ignore
+    }
+    return map;
+  }
+
+  async listTree(owner: string, name: string, subPath = '', statusMap?: Map<string, GitFileStatusCode>): Promise<WorkspaceEntry[]> {
     const repoDir = this.getRepoDir(owner, name);
     const targetDir = this.resolveInsideRepo(repoDir, subPath);
 
@@ -146,6 +282,7 @@ export class WorkspaceService {
       return [];
     }
 
+    const effectiveStatusMap = statusMap || (await this.getGitStatusMap(owner, name));
     const entries = await fs.readdir(targetDir, { withFileTypes: true });
     const out: WorkspaceEntry[] = [];
     for (const entry of entries) {
@@ -153,11 +290,22 @@ export class WorkspaceService {
         continue;
       }
       const rel = subPath ? `${subPath.replace(/\/+$/, '')}/${entry.name}` : entry.name;
+      const normalizedPath = rel.replace(/\\/g, '/');
+
       if (entry.isDirectory()) {
-        out.push({ name: entry.name, path: rel, type: 'dir' });
+        // Check if any file under this directory has a git status
+        let dirStatus: GitFileStatusCode | undefined;
+        for (const [fPath, code] of effectiveStatusMap.entries()) {
+          if (fPath.startsWith(`${normalizedPath}/`)) {
+            dirStatus = code;
+            break;
+          }
+        }
+        out.push({ name: entry.name, path: rel, type: 'dir', gitStatus: dirStatus });
       } else if (entry.isFile()) {
         const stat = await fs.stat(path.join(targetDir, entry.name)).catch(() => null);
-        out.push({ name: entry.name, path: rel, type: 'file', size: stat?.size });
+        const fileStatus = effectiveStatusMap.get(normalizedPath);
+        out.push({ name: entry.name, path: rel, type: 'file', size: stat?.size, gitStatus: fileStatus });
       }
     }
 
@@ -172,6 +320,17 @@ export class WorkspaceService {
     const target = this.resolveInsideRepo(repoDir, relPath);
     const content = await fs.readFile(target, 'utf8');
     return content.slice(0, 100000);
+  }
+
+  async readOriginalFile(owner: string, name: string, relPath: string): Promise<string | null> {
+    const repoDir = this.getRepoDir(owner, name);
+    const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+    try {
+      const { stdout } = await this.runGit(repoDir, ['show', `HEAD:${normalized}`]);
+      return stdout.slice(0, 100000);
+    } catch {
+      return null;
+    }
   }
 
   async writeFiles(
@@ -247,25 +406,106 @@ export class WorkspaceService {
     }
   }
 
-  async getDiffAndStatus(owner: string, name: string): Promise<{
-    branch: string;
-    status: string;
-    diff: string;
-  }> {
+  parseGitStatusPorcelain(statusText: string): {
+    fileStatuses: GitFileStatusItem[];
+    counts: {
+      added: number;
+      modified: number;
+      untracked: number;
+      deleted: number;
+      renamed: number;
+      conflict: number;
+      total: number;
+    };
+  } {
+    const lines = statusText.split('\n').map((l) => l.trimEnd()).filter(Boolean);
+    const fileStatuses: GitFileStatusItem[] = [];
+    const counts = {
+      added: 0,
+      modified: 0,
+      untracked: 0,
+      deleted: 0,
+      renamed: 0,
+      conflict: 0,
+      total: 0,
+    };
+
+    for (const line of lines) {
+      if (line.length < 3) continue;
+      const rawCode = line.slice(0, 2);
+      const rest = line.slice(3).trim();
+      let code: GitFileStatusCode = 'M';
+      let oldPath: string | undefined;
+      let filePath = rest;
+
+      if (rest.includes(' -> ')) {
+        const parts = rest.split(' -> ');
+        oldPath = parts[0]?.trim();
+        filePath = parts[1]?.trim() || rest;
+      }
+
+      if (rawCode === '??') {
+        code = 'U';
+        counts.untracked++;
+      } else if (
+        rawCode.includes('U') ||
+        (rawCode[0] === 'A' && rawCode[1] === 'A') ||
+        (rawCode[0] === 'D' && rawCode[1] === 'D')
+      ) {
+        code = 'C';
+        counts.conflict++;
+      } else if (rawCode.includes('A')) {
+        code = 'A';
+        counts.added++;
+      } else if (rawCode.includes('D')) {
+        code = 'D';
+        counts.deleted++;
+      } else if (rawCode.includes('R')) {
+        code = 'R';
+        counts.renamed++;
+      } else {
+        code = 'M';
+        counts.modified++;
+      }
+
+      counts.total++;
+      fileStatuses.push({
+        path: filePath.replace(/\\/g, '/'),
+        code,
+        rawCode,
+        staged: rawCode[0] !== ' ' && rawCode[0] !== '?',
+        unstaged: rawCode[1] !== ' ' && rawCode[1] !== '?',
+        ...(oldPath ? { oldPath: oldPath.replace(/\\/g, '/') } : {}),
+      });
+    }
+
+    return { fileStatuses, counts };
+  }
+
+  async getDiffAndStatus(owner: string, name: string): Promise<WorkspaceGitState> {
     const repoDir = this.getRepoDir(owner, name);
     const exists = await this.existsLocally(owner, name);
     if (!exists) {
-      return { branch: 'not-cloned', status: '', diff: '' };
+      return {
+        branch: 'not-cloned',
+        status: '',
+        diff: '',
+        fileStatuses: [],
+        counts: { added: 0, modified: 0, untracked: 0, deleted: 0, renamed: 0, conflict: 0, total: 0 },
+      };
     }
     const [branchRes, statusRes, diffRes] = await Promise.all([
       this.runGit(repoDir, ['rev-parse', '--abbrev-ref', 'HEAD']),
-      this.runGit(repoDir, ['status', '--short']),
+      this.runGit(repoDir, ['status', '--porcelain=v1', '-uall']),
       this.runGit(repoDir, ['diff', '--no-color']),
     ]);
+    const { fileStatuses, counts } = this.parseGitStatusPorcelain(statusRes.stdout);
     return {
       branch: branchRes.stdout.trim(),
       status: statusRes.stdout.trim(),
       diff: diffRes.stdout.slice(0, 50000),
+      fileStatuses,
+      counts,
     };
   }
 
@@ -277,6 +517,14 @@ export class WorkspaceService {
   ): Promise<{ committed: boolean; commitSha?: string }> {
     const clean = branchName.trim();
     const repoDir = this.getRepoDir(owner, name);
+    if (clean && clean !== 'main' && clean !== 'master') {
+      const curBranch = await this.runGit(repoDir, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => ({ stdout: '' }));
+      if (curBranch.stdout.trim() !== clean) {
+        await this.checkoutBranch(owner, name, clean, 'main').catch(() => {});
+      }
+    }
+    await this.runGit(repoDir, ['config', 'user.name', 'CodyNex OS Engineering']).catch(() => {});
+    await this.runGit(repoDir, ['config', 'user.email', 'engineering@codynex.local']).catch(() => {});
     await this.runGit(repoDir, ['add', '-A']);
     const status = await this.runGit(repoDir, ['status', '--porcelain']);
     if (!status.stdout.trim()) {
@@ -322,6 +570,11 @@ export class WorkspaceService {
     );
 
     if (hasDefaultRemote) {
+      const currentBranchRes = await this.runGit(repoDir, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(
+        () => ({ stdout: '' }),
+      );
+      const currentBranch = currentBranchRes.stdout.trim();
+
       const defaultAhead = await this.runGit(repoDir, [
         'log',
         `origin/${params.defaultBranch}..${params.defaultBranch}`,
@@ -329,10 +582,19 @@ export class WorkspaceService {
       ]).catch(() => ({ stdout: '' }));
 
       if (defaultAhead.stdout.trim()) {
-        // Commits were accidentally committed to local default branch; transfer them to clean branch and reset default
-        await this.runGit(repoDir, ['branch', '-f', clean, params.defaultBranch]);
-        await this.runGit(repoDir, ['checkout', params.defaultBranch]);
-        await this.runGit(repoDir, ['reset', '--hard', `origin/${params.defaultBranch}`]);
+        if (currentBranch === params.defaultBranch) {
+          // Commits were accidentally committed to local default branch;
+          // Switch to or create clean branch to preserve commits
+          await this.runGit(repoDir, ['checkout', '-b', clean]).catch(async () => {
+            await this.runGit(repoDir, ['checkout', clean]);
+          });
+          // Safely reset local default branch back to origin tracking ref
+          await this.runGit(repoDir, ['branch', '-f', params.defaultBranch, `origin/${params.defaultBranch}`]);
+        } else {
+          // Current branch is already the feature branch or another branch;
+          // safely reset local defaultBranch to match origin without touching the checked out worktree
+          await this.runGit(repoDir, ['branch', '-f', params.defaultBranch, `origin/${params.defaultBranch}`]).catch(() => {});
+        }
       }
     }
 
@@ -383,6 +645,15 @@ export class WorkspaceService {
       }
     }
 
+    if (hasDefaultRemote && !isInitialBootstrap) {
+      // Rebase on top of latest remote default branch to guarantee the branch is ahead and not behind
+      try {
+        await this.runGit(repoDir, ['rebase', `origin/${params.defaultBranch}`]);
+      } catch {
+        await this.runGit(repoDir, ['rebase', '--abort']).catch(() => {});
+      }
+    }
+
     // Verify branch has unique commits compared to the remote default branch
     let commitsCount: number;
     let changedFiles: string[];
@@ -419,7 +690,11 @@ export class WorkspaceService {
 
     // Push feature branch to origin
     const shaRes = await this.runGit(repoDir, ['rev-parse', 'HEAD']);
-    await this.runGit(repoDir, ['push', '-u', 'origin', clean], params.token);
+    try {
+      await this.runGit(repoDir, ['push', '-u', 'origin', clean], params.token);
+    } catch {
+      await this.runGit(repoDir, ['push', '--force-with-lease', '-u', 'origin', clean], params.token);
+    }
 
     return {
       commitSha: shaRes.stdout.trim(),
@@ -428,6 +703,50 @@ export class WorkspaceService {
       changedFiles,
       isInitialBootstrap,
     };
+  }
+
+  async installDependencies(
+    owner: string,
+    name: string,
+  ): Promise<{ success: boolean; output: string }> {
+    const repoDir = this.getRepoDir(owner, name);
+    const pkgPath = path.join(repoDir, 'package.json');
+
+    const hasPkg = await fs.access(pkgPath).then(
+      () => true,
+      () => false,
+    );
+
+    if (!hasPkg) {
+      return { success: true, output: 'No package.json found; skipping dependency installation.' };
+    }
+
+    const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    try {
+      const res = await execFileAsync(
+        npmBin,
+        ['install', '--prefer-offline', '--no-audit', '--no-fund'],
+        {
+          cwd: repoDir,
+          timeout: 180000,
+          maxBuffer: 8 * 1024 * 1024,
+          env: {
+            ...process.env,
+            NODE_ENV: 'development',
+          },
+        },
+      );
+      return {
+        success: true,
+        output: (res.stdout || res.stderr || 'Dependencies installed successfully.').slice(-1500),
+      };
+    } catch (err: any) {
+      const errMsg = String(err?.stderr || err?.stdout || err?.message || 'npm install failed');
+      return {
+        success: false,
+        output: errMsg.slice(-2000),
+      };
+    }
   }
 
   async runSafeChecks(owner: string, name: string): Promise<
@@ -453,12 +772,20 @@ export class WorkspaceService {
     try {
       await fs.access(path.join(repoDir, 'node_modules'));
     } catch {
+      const installRes = await this.installDependencies(owner, name);
+      if (!installRes.success) {
+        checks.push({
+          name: 'dependencies',
+          status: 'FAIL',
+          output: `Failed to install dependencies: ${installRes.output}`,
+        });
+        return checks;
+      }
       checks.push({
         name: 'dependencies',
-        status: 'SKIPPED',
-        output: 'node_modules not installed in workspace; skipping script execution.',
+        status: 'PASS',
+        output: 'Dependencies automatically installed in workspace.',
       });
-      return checks;
     }
 
     const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -485,5 +812,204 @@ export class WorkspaceService {
     }
 
     return checks;
+  }
+
+  async executeTerminalCommand(params: {
+    owner: string;
+    name: string;
+    command: string;
+    token?: string;
+  }): Promise<TerminalCommandResult> {
+    const repoDir = this.getRepoDir(params.owner, params.name);
+    const trimmed = params.command.trim();
+
+    if (!trimmed) {
+      return { stdout: '', stderr: '', exitCode: 0, branch: '' };
+    }
+
+    const tokens = parseCommandLine(trimmed);
+    if (tokens.length === 0) {
+      return { stdout: '', stderr: '', exitCode: 0, branch: '' };
+    }
+
+    const curBranchRes = await this.runGit(repoDir, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(
+      () => ({ stdout: 'unknown' }),
+    );
+    const currentBranch = curBranchRes.stdout.trim();
+
+    const allowedSubcommands = new Set([
+      'status',
+      'add',
+      'commit',
+      'diff',
+      'log',
+      'branch',
+      'checkout',
+      'switch',
+      'push',
+      'pull',
+      'fetch',
+      'show',
+      'stash',
+      'rev-parse',
+      'reset',
+      'restore',
+      'merge',
+      'rebase',
+      'remote',
+      'tag',
+      'clean',
+    ]);
+
+    const rawProgram = tokens[0];
+    if (!rawProgram) {
+      return { stdout: '', stderr: '', exitCode: 0, branch: currentBranch };
+    }
+
+    let program = rawProgram.toLowerCase();
+    let args = tokens.slice(1);
+
+    if (allowedSubcommands.has(program)) {
+      args = [program, ...args];
+      program = 'git';
+    }
+
+    if (program === 'pwd') {
+      return { stdout: repoDir, stderr: '', exitCode: 0, branch: currentBranch };
+    }
+
+    if (program === 'ls' || program === 'dir') {
+      try {
+        const files = await fs.readdir(repoDir);
+        return {
+          stdout: files.join('\n'),
+          stderr: '',
+          exitCode: 0,
+          branch: currentBranch,
+        };
+      } catch (err: any) {
+        return {
+          stdout: '',
+          stderr: err.message || 'Failed to list directory',
+          exitCode: 1,
+          branch: currentBranch,
+        };
+      }
+    }
+
+    if (program === 'npm' || program === 'pnpm' || program === 'yarn') {
+      const allowedNpmSubcommands = new Set([
+        'install',
+        'i',
+        'ci',
+        'test',
+        'run',
+        'build',
+        'typecheck',
+        'lint',
+        'list',
+        'ls',
+        'audit',
+      ]);
+      const subCmd = (args[0] || '').toLowerCase();
+      if (args.length > 0 && !allowedNpmSubcommands.has(subCmd)) {
+        return {
+          stdout: '',
+          stderr: `npm subcommand '${subCmd}' is not permitted in workspace terminal. Permitted: install, i, test, run, build, typecheck, lint, list.`,
+          exitCode: 1,
+          branch: currentBranch,
+        };
+      }
+      const bin = process.platform === 'win32' ? `${program}.cmd` : program;
+      try {
+        const res = await execFileAsync(bin, args, {
+          cwd: repoDir,
+          timeout: 180000,
+          maxBuffer: 4 * 1024 * 1024,
+        });
+        return {
+          stdout: res.stdout,
+          stderr: res.stderr,
+          exitCode: 0,
+          branch: currentBranch,
+        };
+      } catch (err: any) {
+        return {
+          stdout: err?.stdout ? String(err.stdout) : '',
+          stderr: err?.stderr || err?.message || 'npm command failed',
+          exitCode: typeof err?.code === 'number' ? err.code : 1,
+          branch: currentBranch,
+        };
+      }
+    }
+
+    if (program !== 'git') {
+      return {
+        stdout: '',
+        stderr: `Command '${program}' not recognized. Permitted commands: git, npm, pnpm, yarn, ls, dir, pwd.`,
+        exitCode: 1,
+        branch: currentBranch,
+      };
+    }
+
+    const rawSubCmd = args[0];
+    if (!rawSubCmd) {
+      return {
+        stdout: 'usage: git [--version] [--help] [-C <path>] [-c <name>=<value>] <command> [<args>]',
+        stderr: '',
+        exitCode: 0,
+        branch: currentBranch,
+      };
+    }
+
+    const subCmd = rawSubCmd.toLowerCase();
+    if (!allowedSubcommands.has(subCmd)) {
+      return {
+        stdout: '',
+        stderr: `git subcommand '${subCmd}' is not permitted in workspace terminal. Allowed subcommands: ${Array.from(allowedSubcommands).join(', ')}`,
+        exitCode: 1,
+        branch: currentBranch,
+      };
+    }
+
+    for (const arg of args) {
+      if (arg === '-i' || arg === '--interactive') {
+        return {
+          stdout: '',
+          stderr: 'Interactive modes are not supported in terminal commands.',
+          exitCode: 1,
+          branch: currentBranch,
+        };
+      }
+    }
+
+    await this.runGit(repoDir, ['config', 'user.name', 'CodyNex OS Operator']).catch(() => {});
+    await this.runGit(repoDir, ['config', 'user.email', 'operator@codynex.local']).catch(() => {});
+
+    const gitArgs = ['--no-pager', ...args];
+
+    try {
+      const res = await this.runGit(repoDir, gitArgs, params.token);
+      const afterBranch = await this.runGit(repoDir, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => ({
+        stdout: currentBranch,
+      }));
+      return {
+        stdout: res.stdout,
+        stderr: res.stderr,
+        exitCode: 0,
+        branch: afterBranch.stdout.trim(),
+      };
+    } catch (err: any) {
+      const afterBranch = await this.runGit(repoDir, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => ({
+        stdout: currentBranch,
+      }));
+      const rawMsg = err?.cause?.stderr || err?.stderr || err?.stdout || err?.message || String(err);
+      return {
+        stdout: err?.stdout ? String(err.stdout) : '',
+        stderr: String(rawMsg),
+        exitCode: typeof err?.code === 'number' ? err.code : 1,
+        branch: afterBranch.stdout.trim(),
+      };
+    }
   }
 }

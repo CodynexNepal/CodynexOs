@@ -35,6 +35,25 @@ export class MarketingCampaignEntity {
   @Column({ name: 'approved_by', type: 'uuid', nullable: true })
   approvedBy!: string | null;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  occasion!: string | null;
+
+  @Column({ name: 'content_payload', type: 'jsonb', nullable: true })
+  contentPayload!: Record<string, any> | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  channels!: string[] | null;
+
+  @Column({ name: 'post_results', type: 'jsonb', nullable: true })
+  postResults!: Array<{
+    channel: string;
+    status: 'PUBLISHED' | 'SCHEDULED' | 'FAILED' | 'PENDING';
+    externalId?: string;
+    externalUrl?: string;
+    dispatchedAt: string;
+    error?: string;
+  }> | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

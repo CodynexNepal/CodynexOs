@@ -123,10 +123,10 @@ export class CommandService {
     // this, requests such as “write code for project Aliza Wears” could be
     // replaced by an AI-generated analysis task, which only saved a report.
     const isImplementationRequest =
-      /\b(write\s+(?:the\s+)?code|code|implement|build|scaffold|create|develop|update|fix|deploy)\b/i.test(
+      /\b(add|write\s+(?:the\s+)?code|code|implement|build|scaffold|create|develop|update|fix|deploy|refactor)\b/i.test(
         lower,
       ) &&
-      /\b(app|application|api|backend|frontend|website|site|page|screen|component|feature|project|repo|repository|code|ui|ux|dashboard|landing)\b/i.test(
+      /\b(app|application|api|backend|frontend|website|site|page|screen|component|feature|project|repo|repository|code|ui|ux|dashboard|landing|carousel|modal|form|table|view)\b/i.test(
         lower,
       );
     const isRepoLifecycle =
@@ -201,6 +201,33 @@ export class CommandService {
         priority: 85,
         dependsOnKeys: ['qa_verify'],
         requiresApproval: false,
+      });
+      return tasks;
+    }
+
+    if (/tihar|dashain|occasion|wish|wishes|social|tiktok|facebook|whatsapp|post|content|festival|holiday/.test(lower)) {
+      tasks.push({
+        key: 'content_draft',
+        title: 'Creative Content & Festive Copywriting (TikTok, Facebook, WhatsApp)',
+        description: `Draft culturally authentic, high-converting social media posts, TikTok storyboard, Facebook copy, and WhatsApp VIP broadcasts for: ${instruction}`,
+        departmentSlug: 'marketing',
+        employeeSlug: 'content_marketer',
+        taskType: 'content_draft',
+        priority: 85,
+        dependsOnKeys: [],
+        requiresApproval: false,
+      });
+
+      tasks.push({
+        key: 'social_dispatch',
+        title: 'Multi-Channel Social Dispatch to Official Accounts',
+        description: `Validate official accounts (TikTok, Facebook, WhatsApp) and execute coordinated marketing post dispatch for: ${instruction}`,
+        departmentSlug: 'marketing',
+        employeeSlug: 'marketing_director',
+        taskType: 'social_dispatch',
+        priority: 80,
+        dependsOnKeys: ['content_draft'],
+        requiresApproval: true,
       });
       return tasks;
     }
@@ -282,7 +309,7 @@ export class CommandService {
         description: `Implement backend API endpoints, validation, and migrations for: ${instruction}`,
         departmentSlug: 'engineering',
         employeeSlug: 'backend_lead',
-        taskType: 'code',
+        taskType: 'code_generate',
         priority: 82,
         dependsOnKeys: needsUiUx ? ['architecture', 'ui_ux_design'] : ['architecture'],
         requiresApproval: false,
@@ -294,7 +321,7 @@ export class CommandService {
         description: `Build responsive TypeScript/Tailwind components aligned with UI/UX prototype and wire live API hooks for: ${instruction}`,
         departmentSlug: 'engineering',
         employeeSlug: 'frontend_lead',
-        taskType: 'code',
+        taskType: 'code_generate',
         priority: 80,
         dependsOnKeys: needsUiUx ? ['architecture', 'ui_ux_design'] : ['architecture'],
         requiresApproval: false,

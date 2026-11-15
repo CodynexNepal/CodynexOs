@@ -30,6 +30,7 @@ export enum TaskStatus {
   RUNNING = 'RUNNING',
   BLOCKED = 'BLOCKED',
   UNDER_REVIEW = 'UNDER_REVIEW',
+  PAUSED = 'PAUSED',
   FAILED = 'FAILED',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
@@ -47,6 +48,17 @@ export enum AiProviderName {
   GROQ = 'groq',
   OLLAMA = 'ollama',
   OPENAI = 'openai',
+  OPENROUTER = 'openrouter',
+  CLOUDFLARE = 'cloudflare',
+  HUGGINGFACE = 'huggingface',
+}
+
+export enum ModelEligibilityStatus {
+  FREE_VERIFIED = 'FREE_VERIFIED',
+  PAID = 'PAID',
+  UNKNOWN = 'UNKNOWN',
+  QUOTA_EXHAUSTED = 'QUOTA_EXHAUSTED',
+  UNAVAILABLE = 'UNAVAILABLE',
 }
 
 export enum AiUsageStatus {

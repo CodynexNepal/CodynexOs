@@ -50,8 +50,8 @@ export const codynexApi = {
   },
   projects: () => api.get<{ success: boolean; data: ProjectItem[] }>("/projects"),
   agents: {
-    liveActivity: () =>
-      api.get<{ success: boolean; data: AgentLiveActivityResponse }>("/agents/live-activity"),
+    liveActivity: (params?: { projectId?: string }) =>
+      api.get<{ success: boolean; data: AgentLiveActivityResponse }>("/agents/live-activity", { params }),
   },
   tasks: {
     list: (params?: { projectId?: string; status?: string }) =>
@@ -122,16 +122,29 @@ export const codynexApi = {
       id: string,
       body: { branchName: string; commitMessage?: string }
     ) => api.post(`/github/repos/${id}/workspace/commit`, body),
+    workspaceTerminal: (
+      id: string,
+      body: { command: string }
+    ) =>
+      api.post<{ stdout: string; stderr: string; exitCode: number; branch: string }>(
+        `/github/repos/${id}/workspace/terminal`,
+        body
+      ),
+    workspaceInstallDeps: (id: string) => api.post(`/github/repos/${id}/workspace/install-deps`, {}),
     workspaceRunChecks: (id: string) => api.post(`/github/repos/${id}/workspace/checks`, {}),
     workspacePushPr: (
       id: string,
       body: { branchName: string; title: string; commitMessage?: string; body?: string }
     ) => api.post(`/github/repos/${id}/workspace/push-pr`, body),
+    workspacePreview: (id: string) => api.get(`/github/repos/${id}/workspace/preview`),
     pullRequests: () => api.get("/github/pull-requests"),
     syncAllPullRequests: () => api.post("/github/pull-requests/sync"),
   },
+  frontends: {
+    list: () => api.get("/frontends"),
+  },
   qa: {
-    reports: () => api.get("/qa/reports"),
+    reports: () => api.get<{ success: boolean; data: Record<string, unknown>[] }>("/qa/reports"),
     createReport: (body: {
       taskId: string;
       verdict: "PASSED" | "FAILED" | "BLOCKED";
@@ -139,6 +152,13 @@ export const codynexApi = {
       summary: string;
       checksExecuted: Array<{ name: string; status: string; output?: string }>;
     }) => api.post("/qa/reports", body),
+    evaluateReleaseGates: (body?: {
+      owner?: string;
+      name?: string;
+      taskId?: string;
+      previewUrl?: string;
+      expectedDeliverables?: string[];
+    }) => api.post<{ success: boolean; data: Record<string, unknown> }>("/qa/release-gates/run", body || {}),
   },
   marketing: {
     campaigns: (businessId?: string) =>
@@ -150,6 +170,35 @@ export const codynexApi = {
       businessId?: string;
       emailAccountId?: string;
     }) => api.post("/marketing/campaigns", body),
+    occasions: () => api.get("/marketing/occasions"),
+    generateContent: (body: {
+      occasionKey?: string;
+      businessId?: string;
+      businessName?: string;
+      customPrompt?: string;
+      channels: string[];
+      brandVoice?: string;
+      discountCode?: string;
+      targetAudience?: string;
+    }) => api.post("/marketing/generate-content", body),
+    publishSocial: (body: {
+      campaignId?: string;
+      occasion?: string;
+      channels: string[];
+      content: Record<string, unknown>;
+      businessId?: string;
+    }) => api.post("/marketing/publish", body),
+    ceoInstantPost: (body: {
+      commandText: string;
+      occasionKey?: string;
+      channels?: string[];
+      businessId?: string;
+    }) => api.post("/marketing/ceo-instant-post", body),
+    socialAccounts: (businessId?: string) =>
+      api.get("/marketing/social-accounts", { params: businessId ? { businessId } : undefined }),
+    upsertSocialAccount: (body: Record<string, unknown>) => api.post("/marketing/social-accounts", body),
+    testSocialAccount: (id: string) => api.post(`/marketing/social-accounts/${id}/test`),
+    deleteSocialAccount: (id: string) => api.delete(`/marketing/social-accounts/${id}`),
   },
   crm: {
     leads: (stage?: string, businessId?: string) =>
@@ -256,6 +305,45 @@ export const codynexApi = {
       allowPaidProviders: boolean;
     }) => api.put("/ai-usage/budget", body),
   },
+  ai: {
+    listProviders: () => api.get("/ai/providers"),
+    saveProvider: (body: {
+      provider: string;
+      apiKey?: string;
+      accountId?: string;
+      baseUrl?: string;
+      model?: string;
+    }) => api.post("/ai/providers", body),
+    deleteProvider: (id: string) => api.delete(`/ai/providers/${id}`),
+    testProvider: (
+      id: string,
+      body?: { apiKey?: string; accountId?: string; baseUrl?: string; model?: string }
+    ) => api.post(`/ai/providers/${id}/test`, body || {}),
+    getProviderModels: (id: string) => api.get(`/ai/providers/${id}/models`),
+    getAllModels: () => api.get("/ai/models"),
+    getQuotas: () => api.get("/ai/quotas"),
+    getSettings: () => api.get("/ai/settings"),
+    updateSettings: (body: {
+      freeOnlyMode?: boolean;
+      autoFallback?: boolean;
+      preferredProviderOrder?: string[];
+      maxConcurrentRequests?: number;
+      maxRetries?: number;
+      timeoutMs?: number;
+      dailyTokenBudget?: number;
+    }) => api.patch("/ai/settings", body),
+    getAgentPreferences: () => api.get("/ai/agents/preferences"),
+    updateAgentPreference: (
+      agentRole: string,
+      body: {
+        preferredProvider?: string;
+        fallbackProvider?: string;
+        preferredModel?: string;
+        temperature?: number;
+        maxTokens?: number;
+      }
+    ) => api.patch(`/ai/agents/${encodeURIComponent(agentRole)}/preferences`, body),
+  },
   notifications: {
     list: () => api.get("/notifications"),
     markRead: (id: string) => api.patch(`/notifications/${id}/read`),
@@ -267,5 +355,87 @@ export const codynexApi = {
     list: () => api.get("/settings"),
     upsert: (body: { key: string; value: Record<string, unknown>; isSecret?: boolean }) =>
       api.put("/settings", body),
+  },
+  hr: {
+    overview: () => api.get("/hr/overview"),
+    contracts: () => api.get("/hr/contracts"),
+    getContract: (employeeId: string) => api.get(`/hr/contracts/${employeeId}`),
+    rules: () => api.get("/hr/rules"),
+    createRule: (body: {
+      ruleCode: string;
+      title: string;
+      description: string;
+      severity: string;
+      defaultPenaltyTokens?: number;
+      category?: string;
+    }) => api.post("/hr/rules", body),
+    updateRule: (
+      id: string,
+      body: {
+        title?: string;
+        description?: string;
+        severity?: string;
+        defaultPenaltyTokens?: number;
+        isActive?: boolean;
+      }
+    ) => api.patch(`/hr/rules/${id}`, body),
+    violations: () => api.get("/hr/violations"),
+    discipline: (body: {
+      employeeId: string;
+      ruleCode: string;
+      penaltyType: string;
+      tokenPenaltyAmount?: number;
+      explanation: string;
+      taskId?: string;
+    }) => api.post("/hr/violations/discipline", body),
+    pardon: (id: string, body?: { reason?: string }) =>
+      api.post(`/hr/violations/${id}/pardon`, body || {}),
+    transactions: () => api.get("/hr/tokens/transactions"),
+    grantTokens: (body: {
+      employeeId: string;
+      amount: number;
+      reason: string;
+      metadata?: Record<string, unknown>;
+    }) => api.post("/hr/tokens/grant", body),
+  },
+  browser: {
+    getState: (sessionId: string) => api.get(`/browser/sessions/${sessionId}`),
+    navigate: (sessionId: string, url: string) => api.post(`/browser/sessions/${sessionId}/navigate`, { url }),
+    click: (sessionId: string, selector: string) => api.post(`/browser/sessions/${sessionId}/click`, { selector }),
+    type: (sessionId: string, selector: string, text: string) =>
+      api.post(`/browser/sessions/${sessionId}/type`, { selector, text }),
+    takeover: (sessionId: string, enabled: boolean) =>
+      api.post(`/browser/sessions/${sessionId}/takeover`, { enabled }),
+    clickCoordinate: (sessionId: string, x: number, y: number) =>
+      api.post(`/browser/sessions/${sessionId}/click-coordinate`, { x, y }),
+    wheel: (sessionId: string, deltaY: number, deltaX = 0) =>
+      api.post(`/browser/sessions/${sessionId}/wheel`, { deltaX, deltaY }),
+    key: (sessionId: string, key?: string, text?: string) =>
+      api.post(`/browser/sessions/${sessionId}/key`, { key, text }),
+  },
+  terminal: {
+    execute: (sessionId: string, command: string, cwd?: string) =>
+      api.post(`/terminal/sessions/${sessionId}/execute`, { command, cwd }),
+    cancel: (executionId: string) => api.post(`/terminal/executions/${executionId}/cancel`),
+  },
+  autonomousAgent: {
+    getSession: (sessionId: string) =>
+      api.get<{ success: boolean; data: Record<string, unknown> | null }>(`/agent/sessions/${sessionId}`),
+    run: (body: {
+      sessionId?: string;
+      taskId?: string;
+      instruction: string;
+      roleTitle?: string;
+      owner?: string;
+      repoName?: string;
+      maxSteps?: number;
+      preferredProvider?: string;
+      preferredModel?: string;
+    }) => api.post("/agent/sessions/run", body),
+    pause: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/pause`),
+    resume: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/resume`),
+    cancel: (sessionId: string) => api.post(`/agent/sessions/${sessionId}/cancel`),
+    reply: (sessionId: string, message: string, additionalSteps?: number) =>
+      api.post(`/agent/sessions/${sessionId}/reply`, { message, additionalSteps }),
   },
 };

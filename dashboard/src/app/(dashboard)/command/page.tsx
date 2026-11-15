@@ -9,6 +9,7 @@ import {
   Building2,
   CheckCircle2,
   Clock,
+  Code2,
   Cpu,
   FolderGit2,
   HelpCircle,
@@ -26,6 +27,7 @@ import { Badge, statusTone } from "@/components/ui/Badge";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { LiveCompanyFlowVisualizer } from "@/components/domain/LiveCompanyFlowVisualizer";
+import { LiveCodexFileEditor } from "@/components/domain/LiveCodexFileEditor";
 import { useApiQuery } from "@/hooks/useApi";
 import { commandSchema } from "@/schemas/forms.schema";
 import { codynexApi, unwrap } from "@/lib/codynexOs";
@@ -108,6 +110,7 @@ export default function CommandCenterPage() {
     clarificationQuestions: string[];
     createdTaskCount: number;
   } | null>(null);
+  const [showCodexStream, setShowCodexStream] = useState(true);
 
   const businessesQuery = useApiQuery<BusinessItem[]>(() => codynexApi.businesses.list());
   const projectsQuery = useApiQuery<ProjectItem[]>(() => codynexApi.projects());
@@ -394,6 +397,14 @@ export default function CommandCenterPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCodexStream((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[#9FE870] bg-surface px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface-muted"
+                    >
+                      <Code2 className="h-3.5 w-3.5 text-[#14532D] dark:text-[#C3FF7D]" />
+                      {showCodexStream ? "Hide Live Codex Stream" : "Watch Live Codex Stream"}
+                    </button>
                     <Link
                       href="/tasks"
                       className="inline-flex items-center gap-1 rounded-md border border-surface-border bg-surface px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface-muted"
@@ -409,6 +420,12 @@ export default function CommandCenterPage() {
                     </Link>
                   </div>
                 </div>
+
+                {showCodexStream && (
+                  <div className="mt-4 pt-4 border-t border-[#9FE870]/40 dark:border-[#2F5D14]">
+                    <LiveCodexFileEditor projectId={result.project.id} />
+                  </div>
+                )}
               </Card>
             )}
           </div>

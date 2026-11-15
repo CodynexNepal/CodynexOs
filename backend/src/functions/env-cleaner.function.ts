@@ -16,6 +16,7 @@ export interface CleanEnvConfig {
   CORS_ORIGIN: string;
   SOCKET_CORS_ORIGIN: string;
   ALLOW_PAID_PROVIDERS: boolean;
+  AI_FREE_ONLY: boolean;
   GEMINI_API_KEY: string;
   GEMINI_MODEL: string;
   GROQ_API_KEY: string;
@@ -26,6 +27,13 @@ export interface CleanEnvConfig {
   OLLAMA_TIMEOUT_MS: number;
   OPENAI_API_KEY: string;
   OPENAI_MODEL: string;
+  OPENROUTER_API_KEY: string;
+  OPENROUTER_MODEL: string;
+  CLOUDFLARE_ACCOUNT_ID: string;
+  CLOUDFLARE_API_TOKEN: string;
+  CLOUDFLARE_MODEL: string;
+  HUGGINGFACE_API_KEY: string;
+  HUGGINGFACE_MODEL: string;
   GITHUB_TOKEN: string;
   GITHUB_DEFAULT_OWNER: string;
   WHATSAPP_ACCESS_TOKEN: string;
@@ -62,6 +70,24 @@ export function cleanTokenExpiry(val?: string, fallback: string = '15m'): string
   return fallback;
 }
 
+function cleanDatabaseUrl(raw?: string): string {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  try {
+    const parsed = new URL(trimmed);
+    parsed.searchParams.delete('channel_binding');
+    if (parsed.searchParams.get('sslmode') === 'require') {
+      parsed.searchParams.set('sslmode', 'verify-full');
+    }
+    return parsed.toString();
+  } catch {
+    return trimmed
+      .replace(/([?&])channel_binding=[^&]+(&|$)/, '$1')
+      .replace(/([?&])sslmode=require(&|$)/, '$1sslmode=verify-full$2')
+      .replace(/[?&]$/, '');
+  }
+}
+
 export function cleanEnvConfig(): CleanEnvConfig {
   const nodeEnv = (process.env.NODE_ENV as CleanEnvConfig['NODE_ENV']) || 'development';
   const isProd = nodeEnv === 'production';
@@ -87,7 +113,7 @@ export function cleanEnvConfig(): CleanEnvConfig {
   const config: CleanEnvConfig = {
     PORT: Number.isNaN(port) ? 8000 : port,
     NODE_ENV: nodeEnv,
-    DATABASE_URL: getRequiredEnv('DATABASE_URL', process.env.DATABASE_URL || defaultDb),
+    DATABASE_URL: cleanDatabaseUrl(getRequiredEnv('DATABASE_URL', process.env.DATABASE_URL || defaultDb)),
     REDIS_URL: (process.env.REDIS_URL || 'redis://127.0.0.1:6379').trim(),
     ENABLE_REDIS: process.env.ENABLE_REDIS === 'true',
     ENABLE_WORKERS: process.env.ENABLE_WORKERS !== 'false',
@@ -115,6 +141,7 @@ export function cleanEnvConfig(): CleanEnvConfig {
       'http://localhost:3000'
     ).trim(),
     ALLOW_PAID_PROVIDERS: process.env.ALLOW_PAID_PROVIDERS === 'true',
+    AI_FREE_ONLY: process.env.AI_FREE_ONLY !== 'false',
     GEMINI_API_KEY: (process.env.GEMINI_API_KEY || '').trim(),
     GEMINI_MODEL: (process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim(),
     GROQ_API_KEY: (process.env.GROQ_API_KEY || '').trim(),
@@ -125,6 +152,19 @@ export function cleanEnvConfig(): CleanEnvConfig {
     OLLAMA_TIMEOUT_MS: Number.isFinite(ollamaTimeoutRaw) && ollamaTimeoutRaw >= 1000 ? ollamaTimeoutRaw : 120000,
     OPENAI_API_KEY: (process.env.OPENAI_API_KEY || '').trim(),
     OPENAI_MODEL: (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim(),
+    OPENROUTER_API_KEY: (process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY || '').trim(),
+    OPENROUTER_MODEL: (process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free').trim(),
+    CLOUDFLARE_ACCOUNT_ID: (process.env.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFARE_ACCOUNT_ID || '').trim(),
+    CLOUDFLARE_API_TOKEN: (
+      process.env.CLOUDFLARE_API_TOKEN ||
+      process.env.CLOUDFLARE_API_KEY ||
+      process.env.CLOUDFARE_API_KEY ||
+      process.env.CLOUD_FLARE_API_KEY ||
+      ''
+    ).trim(),
+    CLOUDFLARE_MODEL: (process.env.CLOUDFLARE_MODEL || '@cf/meta/llama-3.1-8b-instruct').trim(),
+    HUGGINGFACE_API_KEY: (process.env.HUGGINGFACE_API_KEY || process.env.HUGGING_FACE_API_KEY || '').trim(),
+    HUGGINGFACE_MODEL: (process.env.HUGGINGFACE_MODEL || 'meta-llama/Llama-3.2-3B-Instruct').trim(),
     GITHUB_TOKEN: (process.env.GITHUB_TOKEN || '').trim(),
     GITHUB_DEFAULT_OWNER: (process.env.GITHUB_DEFAULT_OWNER || '').trim(),
     WHATSAPP_ACCESS_TOKEN: (process.env.WHATSAPP_ACCESS_TOKEN || '').trim(),

@@ -173,10 +173,28 @@ export function createOsRouter(): Router {
     domainController.commitWorkspace,
   );
   router.post(
+    '/github/repos/:id/workspace/terminal',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.runWorkspaceTerminal,
+  );
+  router.post(
+    '/github/repos/:id/workspace/install-deps',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.installWorkspaceDeps,
+  );
+  router.post(
     '/github/repos/:id/workspace/checks',
     requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
     requireParam('id', { uuid: true }),
     domainController.runWorkspaceChecks,
+  );
+  router.get('/frontends', domainController.listFrontendWorkspaces);
+  router.get(
+    '/github/repos/:id/workspace/preview',
+    requireParam('id', { uuid: true }),
+    domainController.getWorkspacePreview,
   );
   router.post(
     '/github/repos/:id/workspace/push-pr',
@@ -204,6 +222,40 @@ export function createOsRouter(): Router {
     requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
     validateDto(CreateCampaignDto),
     domainController.createCampaign,
+  );
+  router.get('/marketing/occasions', domainController.getMarketingOccasions);
+  router.post(
+    '/marketing/generate-content',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    domainController.generateMarketingContent,
+  );
+  router.post(
+    '/marketing/publish',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    domainController.publishSocialPosts,
+  );
+  router.post(
+    '/marketing/ceo-instant-post',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    domainController.executeCeoInstantPost,
+  );
+  router.get('/marketing/social-accounts', domainController.listSocialAccounts);
+  router.post(
+    '/marketing/social-accounts',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    domainController.upsertSocialAccount,
+  );
+  router.post(
+    '/marketing/social-accounts/:id/test',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.testSocialAccount,
+  );
+  router.delete(
+    '/marketing/social-accounts/:id',
+    requireRoles(UserRole.CEO, UserRole.ADMIN, UserRole.OPERATOR),
+    requireParam('id', { uuid: true }),
+    domainController.deleteSocialAccount,
   );
 
   router.get('/crm/leads', domainController.listLeads);
@@ -310,6 +362,19 @@ export function createOsRouter(): Router {
     domainController.updateBudget,
   );
 
+  // Multi-Provider Free AI Integration & Management
+  router.get('/ai/providers', domainController.listAiProviders);
+  router.post('/ai/providers', requireRoles(UserRole.CEO), domainController.saveAiProvider);
+  router.delete('/ai/providers/:id', requireRoles(UserRole.CEO), domainController.deleteAiProvider);
+  router.post('/ai/providers/:id/test', domainController.testAiProvider);
+  router.get('/ai/providers/:id/models', domainController.getAiProviderModels);
+  router.get('/ai/models', domainController.getAllAiModels);
+  router.get('/ai/quotas', domainController.getAiQuotas);
+  router.get('/ai/settings', domainController.getAiSettings);
+  router.patch('/ai/settings', requireRoles(UserRole.CEO), domainController.updateAiSettings);
+  router.get('/ai/agents/preferences', domainController.getAiAgentPreferences);
+  router.patch('/ai/agents/:id/preferences', requireRoles(UserRole.CEO), domainController.updateAiAgentPreference);
+
   router.get('/notifications', osController.notifications);
   router.post('/notifications/test', osController.sendTestNotification);
   router.patch(
@@ -362,6 +427,29 @@ export function createOsRouter(): Router {
     requireRoles(UserRole.CEO, UserRole.ADMIN),
     hrController.grantTokens,
   );
+
+  // --- Autonomous AI Platform: Browser, Terminal & Agent Execution ---
+  router.get('/browser/sessions/:sessionId', osController.getBrowserState);
+  router.post('/browser/sessions/:sessionId/navigate', osController.browserNavigate);
+  router.post('/browser/sessions/:sessionId/click', osController.browserClick);
+  router.post('/browser/sessions/:sessionId/type', osController.browserType);
+  router.post('/browser/sessions/:sessionId/takeover', osController.browserTakeover);
+  router.post('/browser/sessions/:sessionId/click-coordinate', osController.browserClickCoordinate);
+  router.post('/browser/sessions/:sessionId/wheel', osController.browserWheel);
+  router.post('/browser/sessions/:sessionId/key', osController.browserKeyPress);
+
+  router.post('/terminal/sessions/:sessionId/execute', osController.terminalExecute);
+  router.post('/terminal/executions/:executionId/cancel', osController.terminalCancel);
+
+  router.get('/agent/sessions/:sessionId', osController.agentGetSession);
+  router.post('/agent/sessions/:sessionId/pause', osController.agentPause);
+  router.post('/agent/sessions/:sessionId/resume', osController.agentResume);
+  router.post('/agent/sessions/:sessionId/cancel', osController.agentCancel);
+  router.post('/agent/sessions/:sessionId/reply', osController.agentReplySession);
+  router.post('/agent/sessions/run', osController.agentRunSession);
+
+  // --- Release Quality Gates & Delivery Scorecard ---
+  router.post('/qa/release-gates/run', osController.evaluateReleaseGates);
 
   return router;
 }

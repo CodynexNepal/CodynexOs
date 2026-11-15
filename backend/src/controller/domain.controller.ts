@@ -6,9 +6,11 @@ import { GovernanceRepository } from '../repository/governance.repository';
 import { ModelRouterService } from '../ai/router/model-router.service';
 import { AuditService } from '../services/audit.service';
 import { BusinessEmailService } from '../services/business-email.service';
+import { MarketingService } from '../services/marketing.service';
+import { workspacePreviewService } from '../services/workspace-preview.service';
 import { getRequiredParam } from '../decorators/http.decorator';
 import { STATUS_CODE } from '../constant/statusCode.interface';
-import { MemoryCategory, QaVerdict } from '../constant/enum.constant';
+import { AiProviderName, MemoryCategory, QaVerdict } from '../constant/enum.constant';
 
 export class DomainController {
   constructor(
@@ -19,6 +21,7 @@ export class DomainController {
     private readonly modelRouter: ModelRouterService,
     private readonly auditService: AuditService,
     private readonly businessEmailService: BusinessEmailService,
+    private readonly marketingService?: MarketingService,
   ) {}
 
   listMemory = async (req: Request, res: Response, next: NextFunction) => {
@@ -32,6 +35,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   createMemory = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -56,6 +60,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   createKnowledge = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -86,6 +91,7 @@ export class DomainController {
     }
   };
 
+
   probeGithub = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const owner = typeof req.query.owner === 'string' ? req.query.owner : undefined;
@@ -97,6 +103,7 @@ export class DomainController {
     }
   };
 
+
   diagnoseRepo = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -106,6 +113,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   connectRepo = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -132,6 +140,7 @@ export class DomainController {
     }
   };
 
+
   analyzeRepo = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -141,6 +150,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   createBranchPr = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -171,6 +181,7 @@ export class DomainController {
     }
   };
 
+
   createGithubRepo = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.engService.createGithubRepo({
@@ -196,6 +207,7 @@ export class DomainController {
     }
   };
 
+
   listWorkspaceFiles = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -207,6 +219,7 @@ export class DomainController {
     }
   };
 
+
   readWorkspaceFile = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -217,6 +230,26 @@ export class DomainController {
       next(err);
     }
   };
+
+  listFrontendWorkspaces = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = workspacePreviewService.listAvailableFrontends();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getWorkspacePreview = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.engService.getWorkspacePreviewInfo(id);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
 
   writeWorkspaceFiles = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -233,6 +266,7 @@ export class DomainController {
     }
   };
 
+
   commitWorkspace = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -248,6 +282,32 @@ export class DomainController {
     }
   };
 
+  runWorkspaceTerminal = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const command = typeof req.body?.command === 'string' ? req.body.command : '';
+      const data = await this.engService.executeWorkspaceTerminal({
+        repoId: id,
+        command,
+        actorId: req.user!.userId,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  installWorkspaceDeps = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.engService.installWorkspaceDependencies(id, req.user!.userId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+
   runWorkspaceChecks = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -258,6 +318,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   commitPushWorkspace = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -286,6 +347,7 @@ export class DomainController {
     }
   };
 
+
   syncAllPullRequests = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.engService.syncAllPullRequests(req.user!.userId);
@@ -295,6 +357,7 @@ export class DomainController {
     }
   };
 
+
   listQaReports = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.engService.listQaReports();
@@ -303,6 +366,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   createQaReport = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -323,7 +387,9 @@ export class DomainController {
   listCampaigns = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : undefined;
-      const data = await this.crmService.listCampaigns(businessId);
+      const data = this.marketingService
+        ? await this.marketingService.listCampaigns(businessId)
+        : await this.crmService.listCampaigns(businessId);
       res.status(STATUS_CODE.OK).json({ success: true, data });
     } catch (err) {
       next(err);
@@ -339,6 +405,145 @@ export class DomainController {
     }
   };
 
+  getMarketingOccasions = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.OK).json({ success: true, data: [] });
+      }
+      const data = this.marketingService.getOccasions();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  generateMarketingContent = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const data = await this.marketingService.generateContent({
+        occasionKey: req.body.occasionKey,
+        businessId: req.body.businessId,
+        businessName: req.body.businessName,
+        customPrompt: req.body.customPrompt,
+        channels: req.body.channels || ['TIKTOK', 'FACEBOOK', 'WHATSAPP'],
+        brandVoice: req.body.brandVoice,
+        discountCode: req.body.discountCode,
+        targetAudience: req.body.targetAudience,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  publishSocialPosts = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const data = await this.marketingService.publishToSocialChannels({
+        campaignId: req.body.campaignId,
+        occasion: req.body.occasion,
+        channels: req.body.channels || ['TIKTOK', 'FACEBOOK', 'WHATSAPP'],
+        content: req.body.content,
+        businessId: req.body.businessId,
+        actorId: req.user?.userId,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  executeCeoInstantPost = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const data = await this.marketingService.executeCeoCommandPost({
+        commandText: req.body.commandText,
+        occasionKey: req.body.occasionKey,
+        channels: req.body.channels,
+        businessId: req.body.businessId,
+        actorId: req.user?.userId,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  listSocialAccounts = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.OK).json({ success: true, data: [] });
+      }
+      const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : undefined;
+      const data = await this.marketingService.listSocialAccounts(businessId);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  upsertSocialAccount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const data = await this.marketingService.saveSocialAccount(req.body);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  testSocialAccount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const id = getRequiredParam(req, 'id');
+      const data = await this.marketingService.testAccountConnection(id);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  deleteSocialAccount = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!this.marketingService) {
+        return res.status(STATUS_CODE.SERVICE_UNAVAILABLE).json({
+          success: false,
+          message: 'Marketing service not configured',
+        });
+      }
+      const id = getRequiredParam(req, 'id');
+      const data = await this.marketingService.deleteSocialAccount(id);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   listLeads = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const stage = typeof req.query.stage === 'string' ? req.query.stage : undefined;
@@ -349,6 +554,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   upsertLead = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -369,6 +575,7 @@ export class DomainController {
     }
   };
 
+
   listInteractions = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const leadId = typeof req.query.leadId === 'string' ? req.query.leadId : undefined;
@@ -378,6 +585,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   draftLeadOutreach = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -405,6 +613,7 @@ export class DomainController {
     }
   };
 
+
   sendInteractionEmail = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -421,6 +630,7 @@ export class DomainController {
     }
   };
 
+
   listBusinesses = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.businessEmailService.listBusinesses();
@@ -429,6 +639,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   createBusiness = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -449,6 +660,7 @@ export class DomainController {
     }
   };
 
+
   listEmailAccounts = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const businessId = typeof req.query.businessId === 'string' ? req.query.businessId : undefined;
@@ -458,6 +670,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   createEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -478,6 +691,7 @@ export class DomainController {
     }
   };
 
+
   deleteEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -487,6 +701,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   verifyEmailAccount = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -506,6 +721,7 @@ export class DomainController {
     }
   };
 
+
   updateLeadStage = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -521,6 +737,7 @@ export class DomainController {
     }
   };
 
+
   classifyReply = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = getRequiredParam(req, 'id');
@@ -534,6 +751,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   aiUsage = async (_req: Request, res: Response, next: NextFunction) => {
     try {
@@ -557,6 +775,7 @@ export class DomainController {
     }
   };
 
+
   aiHealth = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.modelRouter.getHealthReport();
@@ -565,6 +784,7 @@ export class DomainController {
       next(err);
     }
   };
+
 
   updateBudget = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -590,6 +810,168 @@ export class DomainController {
       });
 
       res.status(STATUS_CODE.OK).json({ success: true, data: saved });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  listAiProviders = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.listProviders();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  saveAiProvider = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const provider = req.body.provider as AiProviderName;
+      await this.modelRouter.saveProviderCredentials(provider, {
+        apiKey: req.body.apiKey,
+        accountId: req.body.accountId,
+        apiToken: req.body.apiToken,
+        baseUrl: req.body.baseUrl,
+      });
+
+      if (req.user?.userId) {
+        await this.auditService.log({
+          actorType: 'USER',
+          actorId: req.user.userId,
+          action: 'AI_PROVIDER_CREDENTIALS_UPDATED',
+          resourceType: 'ai_provider',
+          resourceId: provider,
+          metadata: { provider },
+        });
+      }
+
+      res.status(STATUS_CODE.OK).json({ success: true, message: `Updated credentials for ${provider}` });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  deleteAiProvider = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id') as AiProviderName;
+      await this.modelRouter.removeProviderCredentials(id);
+
+      if (req.user?.userId) {
+        await this.auditService.log({
+          actorType: 'USER',
+          actorId: req.user.userId,
+          action: 'AI_PROVIDER_CREDENTIALS_DELETED',
+          resourceType: 'ai_provider',
+          resourceId: id,
+          metadata: { provider: id },
+        });
+      }
+
+      res.status(STATUS_CODE.OK).json({ success: true, message: `Removed credentials for ${id}` });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  testAiProvider = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id') as AiProviderName;
+      const data = await this.modelRouter.testProvider(id, {
+        apiKey: req.body?.apiKey,
+        accountId: req.body?.accountId,
+        apiToken: req.body?.apiToken,
+        baseUrl: req.body?.baseUrl,
+      });
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getAiProviderModels = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id') as AiProviderName;
+      const data = await this.modelRouter.getProviderModels(id);
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getAllAiModels = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.getAllFreeModels();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getAiQuotas = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.getQuotaStatus();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getAiSettings = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.getGlobalSettings();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateAiSettings = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.updateGlobalSettings(req.body);
+
+      if (req.user?.userId) {
+        await this.auditService.log({
+          actorType: 'USER',
+          actorId: req.user.userId,
+          action: 'AI_GLOBAL_SETTINGS_UPDATED',
+          resourceType: 'ai_settings',
+          resourceId: 'global',
+          metadata: req.body,
+        });
+      }
+
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getAiAgentPreferences = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.modelRouter.getAgentPreferences();
+      res.status(STATUS_CODE.OK).json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateAiAgentPreference = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = getRequiredParam(req, 'id');
+      const data = await this.modelRouter.updateAgentPreference(id, req.body);
+
+      if (req.user?.userId) {
+        await this.auditService.log({
+          actorType: 'USER',
+          actorId: req.user.userId,
+          action: 'AI_AGENT_PREFERENCE_UPDATED',
+          resourceType: 'ai_agent_preference',
+          resourceId: id,
+          metadata: req.body,
+        });
+      }
+
+      res.status(STATUS_CODE.OK).json({ success: true, data });
     } catch (err) {
       next(err);
     }
